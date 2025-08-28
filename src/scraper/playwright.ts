@@ -1,9 +1,31 @@
-import { chromium, type Browser } from 'playwright';
+import type { Browser as PuppeteerBrowser } from 'puppeteer';
+import type { Browser as PuppeteerCoreBrowser } from 'puppeteer-core';
+
+type BrowserLike = PuppeteerBrowser | PuppeteerCoreBrowser;
 
 export type ScrapeResult = { product: string; price: number; currency: string };
 
-export async function withBrowser(action: (browser: Browser) => Promise<void>) {
-  const browser = await chromium.launch({ headless: true });
+async function launchBrowser(): Promise<BrowserLike> {
+  // In Vercel/serverless, use puppeteer-core with @sparticuz/chromium.
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_VERSION) {
+    const { default: chromium } = await import('@sparticuz/chromium');
+    const puppeteer = await import('puppeteer-core');
+    const executablePath = await chromium.executablePath();
+    return await puppeteer.launch({
+      headless: true,
+      args: chromium.args,
+      executablePath: executablePath ?? undefined,
+      defaultViewport: chromium.defaultViewport,
+    });
+  }
+
+  // Local/dev: use full puppeteer which bundles a Chromium binary.
+  const puppeteer = await import('puppeteer');
+  return await puppeteer.launch({ headless: true });
+}
+
+export async function withBrowser(action: (browser: BrowserLike) => Promise<void>) {
+  const browser = await launchBrowser();
   try {
     await action(browser);
   } finally {
@@ -14,14 +36,20 @@ export async function withBrowser(action: (browser: Browser) => Promise<void>) {
 export async function scrapeExampleSite(): Promise<ScrapeResult[]> {
   const results: ScrapeResult[] = [];
   await withBrowser(async (browser) => {
-    const context = await browser.newContext();
-    const page = await context.newPage();
-    await page.goto('https://example.com');
-    const title = await page.textContent('h1');
-    if (title) {
-      results.push({ product: title.trim(), price: 0, currency: 'USD' });
+    const page = await browser.newPage();
+    await page.goto('https://example.com', { waitUntil: 'domcontentloaded' });
+    const elementHandle = await page.$('h1');
+    let title = '';
+    if (elementHandle) {
+      const textProp = await elementHandle.getProperty('textContent');
+      const raw = (await textProp.jsonValue()) as string | null;
+      title = (raw ?? '').trim();
+      await elementHandle.dispose();
     }
-    await context.close();
+    if (title) {
+      results.push({ product: title, price: 0, currency: 'USD' });
+    }
+    await page.close();
   });
   return results;
 }
