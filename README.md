@@ -2,7 +2,7 @@
 
 A simple scraper + alerting system that monitors **online supermarket websites** for product prices and promotions.  
 
-It uses [Playwright](https://playwright.dev/) to extract data from category/product pages, stores results in SQLite, and optionally notifies you via Telegram when your favourite items are on sale.
+It uses headless Chromium to extract data from category/product pages (Puppeteer locally, serverless-compatible Chromium on Vercel), stores results in LibSQL (remote) or SQLite (local), and optionally notifies you via Telegram when your favourite items are on sale.
 
 ---
 
