@@ -1,7 +1,7 @@
 import type { Browser as PuppeteerBrowser } from 'puppeteer';
 import type { Browser as PuppeteerCoreBrowser } from 'puppeteer-core';
 
-type BrowserLike = PuppeteerBrowser | PuppeteerCoreBrowser;
+export type BrowserLike = PuppeteerBrowser | PuppeteerCoreBrowser;
 
 export type ScrapeResult = { product: string; price: number; currency: string };
 

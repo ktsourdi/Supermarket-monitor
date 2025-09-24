@@ -8,6 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
+    "watch:add": "tsx src/tools/watchlist.ts",
     "lint": "eslint .",
     "format": "prettier -w ."
   },
