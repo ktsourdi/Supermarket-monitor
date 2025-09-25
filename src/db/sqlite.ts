@@ -68,6 +68,16 @@ export async function listActiveWatchlist(db: SqliteDatabase): Promise<Watchlist
   return result.rows as WatchlistItem[];
 }
 
+export async function listAllWatchlist(db: SqliteDatabase): Promise<WatchlistItem[]> {
+  const result = await db.execute({
+    sql: `SELECT id, product_name, product_url, target_price, active, last_notified_price, created_at, updated_at
+          FROM watchlist ORDER BY id ASC`,
+    args: [],
+  });
+  // @ts-expect-error libsql types use any for rows
+  return result.rows as WatchlistItem[];
+}
+
 export async function setLastNotifiedPrice(db: SqliteDatabase, id: number, price: number): Promise<void> {
   await db.execute({
     sql: `UPDATE watchlist SET last_notified_price = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
@@ -89,4 +99,36 @@ export async function upsertWatchItem(
             updated_at = CURRENT_TIMESTAMP`,
     args: [item.product_url, item.product_name ?? null, item.target_price ?? null, item.active ?? 1],
   });
+}
+
+export async function deleteWatchItemById(db: SqliteDatabase, id: number): Promise<void> {
+  await db.execute({
+    sql: `DELETE FROM watchlist WHERE id = ?`,
+    args: [id],
+  });
+}
+
+export async function deleteWatchItemByUrl(db: SqliteDatabase, url: string): Promise<void> {
+  await db.execute({
+    sql: `DELETE FROM watchlist WHERE product_url = ?`,
+    args: [url],
+  });
+}
+
+export type PriceHistoryItem = {
+  id: number;
+  product: string;
+  price: number;
+  currency: string;
+  captured_at: string;
+};
+
+export async function listPriceHistory(db: SqliteDatabase, limit: number = 100): Promise<PriceHistoryItem[]> {
+  const lim = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 1000) : 100;
+  const result = await db.execute({
+    sql: `SELECT id, product, price, currency, captured_at FROM price_history ORDER BY captured_at DESC LIMIT ?`,
+    args: [lim],
+  });
+  // @ts-expect-error libsql types use any for rows
+  return result.rows as PriceHistoryItem[];
 }
