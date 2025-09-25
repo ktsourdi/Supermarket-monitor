@@ -85,8 +85,14 @@ export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResul
       const res = await fetch(url, {
         headers: {
           'user-agent':
-            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
           'accept-language': 'el-GR,el;q=0.9,en;q=0.8',
+          'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+          'upgrade-insecure-requests': '1',
+          'sec-fetch-site': 'none',
+          'sec-fetch-mode': 'navigate',
+          'sec-fetch-user': '?1',
+          'sec-fetch-dest': 'document',
         },
       });
       const html = await res.text();
@@ -126,6 +132,13 @@ export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResul
       if (title && priceNum != null) {
         return { product: title, price: priceNum, currency: 'EUR' };
       }
+      // eslint-disable-next-line no-console
+      console.warn('Serverless parse miss', {
+        status: res.status,
+        hasDataPrice: /data-price/i.test(html),
+        hasOgPrice: /product:price:amount/i.test(html),
+        hasJsonLd: /application\/ld\+json/i.test(html),
+      });
     } catch {}
     // In serverless, avoid launching a full browser if parsing failed
     return null;
