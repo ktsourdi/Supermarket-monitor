@@ -80,11 +80,13 @@ async function extractFromProductPage(page: any): Promise<ScrapeResult | null> {
 
 // Persisted cookie so the server returns full HTML without 403
 const CONSENT_COOKIE_RAW = '{"version":"7C87B57438D00EFA48BF57151CDD2D85DNT0","categories":{"Functional":{"wanted":false},"Marketing":{"wanted":false},"Analytics":{"wanted":false},"Necessary":{"wanted":true}},"dnt":false}';
-const STORESID_COOKIE = '7c755392-2486-48c0-9776-8c432dd2263';
+const STORESID_COOKIE = '7c755392-2486-48c0-9776-88c432dd2263';
 const ZONE_COOKIE = '%7B%22ShippingType%22%3A1%2C%22HubID%22%3A7%7D'; // URI-encoded JSON
+const AKA_COOKIE = 'A';
 
 const COOKIE_HEADER = [
-  `ccconsent=${encodeURIComponent(CONSENT_COOKIE_RAW)}`,
+  `AKA_A2=${AKA_COOKIE}`,
+  `cconsent=${encodeURIComponent(CONSENT_COOKIE_RAW)}`,
   `StoreSID=${STORESID_COOKIE}`,
   `Zone=${ZONE_COOKIE}`,
 ].join('; ');
@@ -166,25 +168,12 @@ export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResul
         'accept-language': 'el-GR,el;q=0.9,en;q=0.8',
         'cache-control': 'no-cache',
       });
-      await page.setCookie({
-        name: 'ccconsent',
-        value: encodeURIComponent(CONSENT_COOKIE_RAW),
-        domain: '.sklavenitis.gr',
-        path: '/',
-      },
-      {
-        name: 'StoreSID',
-        value: STORESID_COOKIE,
-        domain: '.sklavenitis.gr',
-        path: '/',
-      },
-      {
-        name: 'Zone',
-        value: ZONE_COOKIE,
-        domain: '.sklavenitis.gr',
-        path: '/',
-      },
-    );
+      await page.setCookie(
+        { name: 'AKA_A2', value: AKA_COOKIE, domain: '.sklavenitis.gr', path: '/' },
+        { name: 'cconsent', value: encodeURIComponent(CONSENT_COOKIE_RAW), domain: '.sklavenitis.gr', path: '/' },
+        { name: 'StoreSID', value: STORESID_COOKIE, domain: '.sklavenitis.gr', path: '/' },
+        { name: 'Zone', value: ZONE_COOKIE, domain: '.sklavenitis.gr', path: '/' },
+      );
     } catch {}
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
     await new Promise(r=>setTimeout(r,1500));
