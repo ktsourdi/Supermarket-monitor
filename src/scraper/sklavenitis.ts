@@ -80,6 +80,14 @@ async function extractFromProductPage(page: any): Promise<ScrapeResult | null> {
 
 // Persisted cookie so the server returns full HTML without 403
 const CONSENT_COOKIE_RAW = '{"version":"7C87B57438D00EFA48BF57151CDD2D85DNT0","categories":{"Functional":{"wanted":false},"Marketing":{"wanted":false},"Analytics":{"wanted":false},"Necessary":{"wanted":true}},"dnt":false}';
+const STORESID_COOKIE = '7c755392-2486-48c0-9776-8c432dd2263';
+const ZONE_COOKIE = '%7B%22ShippingType%22%3A1%2C%22HubID%22%3A7%7D'; // URI-encoded JSON
+
+const COOKIE_HEADER = [
+  `ccconsent=${encodeURIComponent(CONSENT_COOKIE_RAW)}`,
+  `StoreSID=${STORESID_COOKIE}`,
+  `Zone=${ZONE_COOKIE}`,
+].join('; ');
 
 export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResult | null> {
   // Fast path for serverless (no headless browser): try HTTP fetch + parse
@@ -90,7 +98,7 @@ export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResul
           'user-agent':
             'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
           'accept-language': 'el-GR,el;q=0.9,en;q=0.8',
-          Cookie: `ccconsent=${encodeURIComponent(CONSENT_COOKIE_RAW)}`,
+          Cookie: COOKIE_HEADER,
           'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
           'upgrade-insecure-requests': '1',
           'sec-fetch-site': 'none',
@@ -163,7 +171,20 @@ export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResul
         value: encodeURIComponent(CONSENT_COOKIE_RAW),
         domain: '.sklavenitis.gr',
         path: '/',
-      });
+      },
+      {
+        name: 'StoreSID',
+        value: STORESID_COOKIE,
+        domain: '.sklavenitis.gr',
+        path: '/',
+      },
+      {
+        name: 'Zone',
+        value: ZONE_COOKIE,
+        domain: '.sklavenitis.gr',
+        path: '/',
+      },
+    );
     } catch {}
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
     await new Promise(r=>setTimeout(r,1500));
