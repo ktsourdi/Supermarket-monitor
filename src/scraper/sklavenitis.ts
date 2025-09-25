@@ -156,7 +156,7 @@ export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResul
       });
     } catch {}
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
-    await page.waitForTimeout(1500);
+    await new Promise(r=>setTimeout(r,1500));
 
     // Try to accept cookie banners if present
     try {
@@ -173,7 +173,7 @@ export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResul
         const btn = await page.$(sel);
         if (btn) {
           await btn.click().catch(() => {});
-          await page.waitForTimeout(800);
+          await new Promise(r=>setTimeout(r,800));
           handled = true;
           break;
         }
@@ -185,7 +185,7 @@ export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResul
           const text = await page.evaluate((el: HTMLElement) => (el.textContent || '').trim().toLowerCase(), btn);
           if (acceptTexts.some((t) => text.includes(t))) {
             await btn.click().catch(() => {});
-            await page.waitForTimeout(800);
+            await new Promise(r=>setTimeout(r,800));
             break;
           }
         }
@@ -199,10 +199,10 @@ export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResul
         return !!el && !!el.getAttribute('data-price');
       }, { timeout: 20000 }).catch(() => {});
     } catch {}
-    await page.waitForTimeout(1500);
+    await new Promise(r=>setTimeout(r,1500));
     try {
       await page.evaluate(() => window.scrollBy(0, 200));
-      await page.waitForTimeout(500);
+      await new Promise(r=>setTimeout(r,500));
     } catch {}
     result = await extractFromProductPage(page);
     if (!result) {
