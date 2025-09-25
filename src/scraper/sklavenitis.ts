@@ -79,6 +79,30 @@ async function extractFromProductPage(page: any): Promise<ScrapeResult | null> {
 }
 
 export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResult | null> {
+  // Fast path for serverless (no headless browser): try HTTP fetch + parse
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_VERSION) {
+    try {
+      const res = await fetch(url, {
+        headers: {
+          'user-agent':
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36',
+          'accept-language': 'el-GR,el;q=0.9,en;q=0.8',
+        },
+      });
+      const html = await res.text();
+      // Product title: og:title
+      const titleMatch = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["'][^>]*>/i);
+      const title = titleMatch?.[1]?.trim() ?? '';
+      // Price: look for data-price or JSON price fields
+      const dataPriceMatch = html.match(/data-price\s*=\s*"([0-9.,]+)"/i) || html.match(/"price"\s*:\s*"?([0-9.,]+)"?/i);
+      const priceRaw = dataPriceMatch?.[1] ?? '';
+      const priceNum = normalizePrice(priceRaw);
+      if (title && priceNum != null) {
+        return { product: title, price: priceNum, currency: 'EUR' };
+      }
+    } catch {}
+  }
+
   let result: ScrapeResult | null = null;
   await withBrowser(async (browser: BrowserLike) => {
     const page: any = await browser.newPage();
