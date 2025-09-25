@@ -10,11 +10,11 @@ async function launchBrowser(): Promise<BrowserLike> {
   if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_VERSION) {
     const { default: chromium } = await import('@sparticuz/chromium');
     const puppeteer = await import('puppeteer-core');
-    if (typeof chromium.setHeadlessMode === 'function') {
-      chromium.setHeadlessMode(true);
+    if (typeof (chromium as unknown as { setHeadlessMode?: (h: boolean) => void }).setHeadlessMode === 'function') {
+      (chromium as unknown as { setHeadlessMode: (h: boolean) => void }).setHeadlessMode(true);
     }
-    if (typeof chromium.setGraphicsMode === 'function') {
-      chromium.setGraphicsMode(false);
+    if (typeof (chromium as unknown as { setGraphicsMode?: (g: boolean) => void }).setGraphicsMode === 'function') {
+      (chromium as unknown as { setGraphicsMode: (g: boolean) => void }).setGraphicsMode(false);
     }
     const executablePath = await chromium.executablePath();
     return await puppeteer.launch({
@@ -22,7 +22,6 @@ async function launchBrowser(): Promise<BrowserLike> {
       args: chromium.args,
       executablePath: executablePath ?? undefined,
       defaultViewport: chromium.defaultViewport,
-      ignoreHTTPSErrors: true,
     });
   }
 
