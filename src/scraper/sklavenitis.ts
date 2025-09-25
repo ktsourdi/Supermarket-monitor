@@ -93,9 +93,34 @@ export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResul
       // Product title: og:title
       const titleMatch = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["'][^>]*>/i);
       const title = titleMatch?.[1]?.trim() ?? '';
-      // Price: look for data-price or JSON price fields
-      const dataPriceMatch = html.match(/data-price\s*=\s*"([0-9.,]+)"/i) || html.match(/"price"\s*:\s*"?([0-9.,]+)"?/i);
-      const priceRaw = dataPriceMatch?.[1] ?? '';
+      // Price strategies (ordered)
+      let priceRaw = html.match(/data-price\s*=\s*"([0-9.,]+)"/i)?.[1] ?? '';
+      if (!priceRaw) {
+        priceRaw = html.match(/<meta[^>]*property=["']product:price:amount["'][^>]*content=["']([^"']+)["'][^>]*>/i)?.[1] ?? '';
+      }
+      if (!priceRaw) {
+        const scriptRegex = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+        let m: RegExpExecArray | null;
+        while ((m = scriptRegex.exec(html))) {
+          const jsonText = m[1].trim();
+          try {
+            const data = JSON.parse(jsonText);
+            const arr = Array.isArray(data) ? data : [data];
+            for (const obj of arr) {
+              const offers = obj?.offers ? (Array.isArray(obj.offers) ? obj.offers : [obj.offers]) : [];
+              for (const o of offers) {
+                const cand = o?.price ?? o?.lowPrice ?? o?.highPrice;
+                if (cand) { priceRaw = String(cand); break; }
+              }
+              if (priceRaw) break;
+            }
+            if (priceRaw) break;
+          } catch {}
+        }
+      }
+      if (!priceRaw) {
+        priceRaw = html.match(/\bprice\b\s*[:=]\s*\"?([0-9.,]+)\"?/i)?.[1] ?? '';
+      }
       const priceNum = normalizePrice(priceRaw);
       if (title && priceNum != null) {
         return { product: title, price: priceNum, currency: 'EUR' };
