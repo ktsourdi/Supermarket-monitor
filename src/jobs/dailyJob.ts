@@ -15,7 +15,13 @@ export async function runDailyJob(): Promise<void> {
   for (const item of watchlist) {
     try {
       const result = await scrapeSklavenitisProduct(item.product_url);
-      if (!result) continue;
+      if (!result) {
+        // eslint-disable-next-line no-console
+        console.warn('No scrape result for', item.product_url);
+        continue;
+      }
+      // eslint-disable-next-line no-console
+      console.log('Scraped', item.product_url, '->', result.price);
       capturedCount += 1;
       const insertSql = 'INSERT INTO price_history (product, price, currency) VALUES (?, ?, ?)';
       await db.execute({ sql: insertSql, args: [result.product, result.price, result.currency] });
@@ -38,6 +44,8 @@ export async function runDailyJob(): Promise<void> {
         await sendTelegramMessage(`Sklavenitis: ${result.product}\nPrice: ${result.price}€\n${item.product_url}\n${reasons}`);
       }
     } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Scrape error for', item.product_url, err);
       await sendTelegramMessage(`Error scraping: ${item.product_url}\n${(err as Error).message}`);
     }
   }
