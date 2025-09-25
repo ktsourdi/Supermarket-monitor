@@ -101,8 +101,9 @@ export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResul
       if (!priceRaw) {
         const scriptRegex = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
         let m: RegExpExecArray | null;
-        while ((m = scriptRegex.exec(html))) {
-          const jsonText = m[1].trim();
+        while ((m = scriptRegex.exec(html)) !== null) {
+          const jsonText = (m[1] ?? '').trim();
+          if (!jsonText) continue;
           try {
             const data = JSON.parse(jsonText);
             const arr = Array.isArray(data) ? data : [data];
