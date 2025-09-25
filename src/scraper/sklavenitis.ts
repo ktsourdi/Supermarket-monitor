@@ -101,6 +101,8 @@ export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResul
         return { product: title, price: priceNum, currency: 'EUR' };
       }
     } catch {}
+    // In serverless, avoid launching a full browser if parsing failed
+    return null;
   }
 
   let result: ScrapeResult | null = null;
