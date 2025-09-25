@@ -20,6 +20,9 @@ export async function runDailyJob(): Promise<void> {
       const insertSql = 'INSERT INTO price_history (product, price, currency) VALUES (?, ?, ?)';
       await db.execute({ sql: insertSql, args: [result.product, result.price, result.currency] });
 
+      // Always update the last price in watchlist
+      await setLastNotifiedPrice(db, item.id, result.price);
+
       const previousNotified = item.last_notified_price ?? undefined;
       const target = item.target_price ?? undefined;
       const shouldNotifyDrop = previousNotified !== undefined && result.price < previousNotified;
@@ -33,7 +36,6 @@ export async function runDailyJob(): Promise<void> {
           .filter(Boolean)
           .join(', ');
         await sendTelegramMessage(`Sklavenitis: ${result.product}\nPrice: ${result.price}€\n${item.product_url}\n${reasons}`);
-        await setLastNotifiedPrice(db, item.id, result.price);
       }
     } catch (err) {
       await sendTelegramMessage(`Error scraping: ${item.product_url}\n${(err as Error).message}`);
