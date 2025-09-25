@@ -34,7 +34,7 @@ async function extractFromProductPage(page: any): Promise<ScrapeResult | null> {
     return '';
   });
 
-  const priceText: string = await page.evaluate(() => {
+  const priceText: string = await page.evaluate(async () => {
     // Prefer explicit data attribute when available (Sklavenitis uses data-price)
     const withDataPrice = document.querySelector('.main-price .price[data-price], .price[data-price]') as HTMLElement | null;
     if (withDataPrice) {
@@ -61,10 +61,10 @@ async function extractFromProductPage(page: any): Promise<ScrapeResult | null> {
       }
     }
     // Broad fallback 1: any [data-price] on the page
-    const anyDataPrice = Array.from(document.querySelectorAll('[data-price]'))
+    const dataPriceCandidates = Array.from(document.querySelectorAll('[data-price]'))
       .map((el) => (el as HTMLElement).getAttribute('data-price') || '')
-      .find((t) => /\d+[\d\.,]*/.test(t));
-    if (anyDataPrice && anyDataPrice.trim()) return anyDataPrice.trim();
+      .filter((t) => /\d+[\d\.,]*/.test(t));
+    if (dataPriceCandidates.length > 0) return dataPriceCandidates[0]?.trim() ?? '';
 
     // Broad fallback 2: any element text that looks like a price with €
     const withEuro = Array.from(document.querySelectorAll('span, div, p, b, strong'))
@@ -147,7 +147,7 @@ export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResul
   await withBrowser(async (browser: BrowserLike) => {
     const page: any = await browser.newPage();
     await page.setUserAgent(
-      'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36'
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
     );
     try {
       await page.setExtraHTTPHeaders({
@@ -155,58 +155,72 @@ export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResul
         'cache-control': 'no-cache',
       });
     } catch {}
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+    await page.waitForTimeout(1500);
+
     // Try to accept cookie banners if present
     try {
-      // First, click any obvious selectors
-      const clicked = await page.evaluate(() => {
-        const sel = [
-          '#onetrust-accept-btn-handler',
-          'button.cookie-accept',
-          "button[aria-label*='accept' i]",
-          "button[aria-label*='συμφωνώ' i]",
-          "button[aria-label*='αποδοχή' i]",
-          "button[aria-label*='αποδοχή όλων' i]",
-        ];
-        for (const s of sel) {
-          const el = document.querySelector<HTMLButtonElement>(s);
-          if (el) { el.click(); return true; }
+      const selectors = [
+        '#onetrust-accept-btn-handler',
+        'button.cookie-accept',
+        "button[aria-label*='accept' i]",
+        "button[aria-label*='συμφωνώ' i]",
+        "button[aria-label*='αποδοχή' i]",
+        "button[aria-label*='αποδοχή όλων' i]",
+      ];
+      let handled = false;
+      for (const sel of selectors) {
+        const btn = await page.$(sel);
+        if (btn) {
+          await btn.click().catch(() => {});
+          await page.waitForTimeout(800);
+          handled = true;
+          break;
         }
-        // Fallback: find any button whose text matches common accept strings (Greek/English)
-        const texts = [
-          'Αποδοχή όλων', 'Αποδοχή', 'Συμφωνώ', 'Accept All', 'Accept', 'Allow All', 'Agree'
-        ].map(t => t.toLowerCase());
-        const btns = Array.from(document.querySelectorAll('button')) as HTMLButtonElement[];
-        for (const b of btns) {
-          const t = (b.textContent || '').trim().toLowerCase();
-          if (texts.some(x => t.includes(x))) { b.click(); return true; }
-        }
-        return false;
-      });
-      if (!clicked) {
-        // Try clicking any element with role=button and matching text
-        await page.evaluate(() => {
-          const texts = ['Αποδοχή όλων', 'Αποδοχή', 'Συμφωνώ', 'Accept All', 'Accept', 'Allow All', 'Agree'].map(t => t.toLowerCase());
-          const els = Array.from(document.querySelectorAll('[role="button"], a, div, span')) as HTMLElement[];
-          for (const el of els) {
-            const t = (el.textContent || '').trim().toLowerCase();
-            if (texts.some(x => t.includes(x))) { (el as HTMLElement).click(); break; }
+      }
+      if (!handled) {
+        const acceptTexts = ['αποδοχή όλων', 'αποδοχή', 'συμφωνώ', 'accept all', 'accept', 'allow all', 'agree'];
+        const buttons = await page.$$('button, [role="button"], a, div, span');
+        for (const btn of buttons) {
+          const text = await page.evaluate((el: HTMLElement) => (el.textContent || '').trim().toLowerCase(), btn);
+          if (acceptTexts.some((t) => text.includes(t))) {
+            await btn.click().catch(() => {});
+            await page.waitForTimeout(800);
+            break;
           }
-        });
+        }
       }
     } catch {}
-    // Wait for price element to render
+
     try {
-      await page.waitForSelector('.main-price .price[data-price], .price[data-price], [data-testid="product-price"]', { timeout: 15000 });
-      // Ensure data-price gets populated
+      await page.waitForSelector('.main-price .price[data-price], .price[data-price], [data-testid="product-price"]', { timeout: 20000 });
       await page.waitForFunction(() => {
         const el = document.querySelector('.main-price .price[data-price], .price[data-price]') as HTMLElement | null;
-        return !!(el && el.getAttribute('data-price'));
-      }, { timeout: 15000 }).catch(() => {});
+        return !!el && !!el.getAttribute('data-price');
+      }, { timeout: 20000 }).catch(() => {});
     } catch {}
-    // Give client-side rendering some additional time
-    await new Promise((r) => setTimeout(r, 2000));
+    await page.waitForTimeout(1500);
+    try {
+      await page.evaluate(() => window.scrollBy(0, 200));
+      await page.waitForTimeout(500);
+    } catch {}
     result = await extractFromProductPage(page);
+    if (!result) {
+      const fallbackPrice = await page.evaluate(() => {
+        const scripts = Array.from(document.querySelectorAll('script')).map((s) => s.textContent || '');
+        for (const content of scripts) {
+          const match = content.match(/"price"\s*:\s*"?([0-9.,]+)"?/i);
+          if (match) return match[1];
+        }
+        return '';
+      });
+      const normalized = fallbackPrice ? normalizePrice(fallbackPrice) : null;
+      if (normalized != null) {
+        const title = await page.title();
+        const productTitle = title?.trim() || 'Sklavenitis Product';
+        result = { product: productTitle, price: normalized, currency: 'EUR' };
+      }
+    }
     await page.close();
   });
   return result;
