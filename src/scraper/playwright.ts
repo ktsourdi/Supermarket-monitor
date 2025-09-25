@@ -12,7 +12,7 @@ async function launchBrowser(): Promise<BrowserLike> {
     const puppeteer = await import('puppeteer-core');
     const executablePath = await chromium.executablePath();
     return await puppeteer.launch({
-      headless: true,
+      headless: chromium.headless,
       args: chromium.args,
       executablePath: executablePath ?? undefined,
       defaultViewport: chromium.defaultViewport,
