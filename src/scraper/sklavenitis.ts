@@ -140,8 +140,7 @@ export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResul
         hasJsonLd: /application\/ld\+json/i.test(html),
       });
     } catch {}
-    // In serverless, avoid launching a full browser if parsing failed
-    return null;
+    // Fallback: launch headless browser (chromium bundled for Vercel)
   }
 
   let result: ScrapeResult | null = null;
