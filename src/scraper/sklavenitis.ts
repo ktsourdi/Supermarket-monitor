@@ -60,9 +60,15 @@ async function extractFromProductPage(page: any): Promise<ScrapeResult | null> {
         }
       }
     }
-    // look for currency signs in spans
-    const withEuro = Array.from(document.querySelectorAll('span, div, p'))
-      .map((n) => n.textContent || '')
+    // Broad fallback 1: any [data-price] on the page
+    const anyDataPrice = Array.from(document.querySelectorAll('[data-price]'))
+      .map((el) => (el as HTMLElement).getAttribute('data-price') || '')
+      .find((t) => /\d+[\d\.,]*/.test(t));
+    if (anyDataPrice && anyDataPrice.trim()) return anyDataPrice.trim();
+
+    // Broad fallback 2: any element text that looks like a price with €
+    const withEuro = Array.from(document.querySelectorAll('span, div, p, b, strong'))
+      .map((n) => (n.textContent || '').trim())
       .find((t) => /\d+[\d\.,]*\s*€/.test(t));
     return withEuro || '';
   });
