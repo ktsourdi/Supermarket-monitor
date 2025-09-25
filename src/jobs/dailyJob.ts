@@ -1,9 +1,10 @@
-import { getDb, listActiveWatchlist, setLastNotifiedPrice } from '../db/sqlite.js';
+import { getDb, initializeSchema, listActiveWatchlist, setLastNotifiedPrice } from '../db/sqlite.js';
 import { scrapeSklavenitisProduct } from '../scraper/sklavenitis.js';
 import { sendTelegramMessage } from '../notifications/telegram.js';
 
 export async function runDailyJob(): Promise<void> {
   const db = getDb();
+  await initializeSchema(db);
   const watchlist = await listActiveWatchlist(db);
   if (watchlist.length === 0) {
     await sendTelegramMessage('Watchlist is empty. Add product URLs to start monitoring.');

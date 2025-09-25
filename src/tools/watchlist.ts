@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { getDb, upsertWatchItem } from '../db/sqlite.js';
+import { getDb, initializeSchema, upsertWatchItem } from '../db/sqlite.js';
 
 function parseArgs(argv: readonly string[]) {
   const args = Array.from(argv).slice(2);
@@ -23,6 +23,7 @@ async function main() {
     ;(globalThis as any).process?.exit(1);
   }
   const db = getDb();
+  await initializeSchema(db);
   await upsertWatchItem(db, {
     product_url: url as string,
     product_name: name ?? null,

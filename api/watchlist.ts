@@ -1,9 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getDb, listAllWatchlist, upsertWatchItem, deleteWatchItemById } from '../src/db/sqlite.js';
+import { getDb, initializeSchema, listAllWatchlist, upsertWatchItem, deleteWatchItemById } from '../src/db/sqlite.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const db = getDb();
+    await initializeSchema(db);
     if (req.method === 'GET') {
       const rows = await listAllWatchlist(db);
       res.status(200).json(rows);
