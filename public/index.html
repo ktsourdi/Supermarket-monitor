@@ -13,12 +13,58 @@
   </head>
   <body>
     <h1>Supermarket Monitor</h1>
-    <p>This deployment exposes a scheduled function at <code>/api/run</code>.</p>
-    <p>
+    <section>
+      <h3>Manage Watchlist</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;">
+        <input id="url" placeholder="Product URL" style="flex:1 1 360px;padding:8px;" />
+        <input id="name" placeholder="Name (optional)" style="flex:1 1 240px;padding:8px;" />
+        <input id="target" type="number" step="0.01" placeholder="Target price" style="width:160px;padding:8px;" />
+        <button id="save">Save</button>
+      </div>
+      <table id="watch" style="border-collapse:collapse;width:100%">
+        <thead><tr><th>ID</th><th>Name</th><th>URL</th><th>Target</th><th>Active</th><th>Last Notified</th><th>Actions</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+    <section>
+      <h3>Recent Prices</h3>
+      <table id="prices" style="border-collapse:collapse;width:100%">
+        <thead><tr><th>When</th><th>Product</th><th>Price</th><th>Currency</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+    <section>
       <button id="run">Run job now</button>
       <span id="status"></span>
-    </p>
+    </section>
     <script>
+      async function refresh(){
+        const [w,p]=await Promise.all([
+          fetch('/api/watchlist').then(r=>r.json()),
+          fetch('/api/prices?limit=50').then(r=>r.json())
+        ]);
+        const wtbody=document.querySelector('#watch tbody');
+        wtbody.innerHTML='';
+        w.forEach(item=>{
+          const tr=document.createElement('tr');
+          tr.innerHTML='<td>'+item.id+'</td><td>'+(item.product_name||'')+'</td><td><a href="'+item.product_url+'" target="_blank">link</a></td><td>'+(item.target_price??'')+'</td><td>'+item.active+'</td><td>'+(item.last_notified_price??'')+'</td><td><button data-id="'+item.id+'" class="del">Delete</button></td>';
+          wtbody.appendChild(tr);
+        });
+        wtbody.querySelectorAll('button.del').forEach(b=>b.addEventListener('click',async e=>{ const id=e.target.getAttribute('data-id'); await fetch('/api/watchlist?id='+id,{method:'DELETE'}); refresh(); }));
+        const ptbody=document.querySelector('#prices tbody');
+        ptbody.innerHTML='';
+        p.forEach(r=>{ const tr=document.createElement('tr'); tr.innerHTML='<td>'+r.captured_at+'</td><td>'+r.product+'</td><td>'+r.price+'</td><td>'+r.currency+'</td>'; ptbody.appendChild(tr); });
+      }
+      document.getElementById('save').addEventListener('click', async ()=>{
+        const url=document.getElementById('url').value.trim();
+        const name=document.getElementById('name').value.trim();
+        const targetRaw=document.getElementById('target').value.trim();
+        const target=targetRaw?Number(targetRaw):null;
+        if(!url){ alert('URL required'); return; }
+        await fetch('/api/watchlist',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({product_url:url,product_name:name||null,target_price:target})});
+        document.getElementById('url').value=''; document.getElementById('name').value=''; document.getElementById('target').value='';
+        refresh();
+      });
       document.getElementById('run').addEventListener('click', async () => {
         const s = document.getElementById('status');
         s.textContent = 'Running...';
@@ -30,6 +76,7 @@
           s.textContent = 'Error: '+e.message;
         }
       });
+      refresh();
     </script>
   </body>
   </html>
