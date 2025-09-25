@@ -35,8 +35,16 @@ async function extractFromProductPage(page: any): Promise<ScrapeResult | null> {
   });
 
   const priceText: string = await page.evaluate(() => {
+    // Prefer explicit data attribute when available (Sklavenitis uses data-price)
+    const withDataPrice = document.querySelector('.main-price .price[data-price], .price[data-price]') as HTMLElement | null;
+    if (withDataPrice) {
+      const dp = withDataPrice.getAttribute('data-price') || '';
+      if (dp.trim()) return dp.trim();
+    }
+
     const candidates = [
       '[data-testid="product-price"]',
+      '.main-price .price',
       '.price, .product-price, span[itemprop="price"]',
       'meta[property="product:price:amount"]',
     ];
@@ -71,9 +79,9 @@ export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResul
     await page.setUserAgent(
       'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36'
     );
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
     // Give client-side rendering some time
-    await new Promise((r) => setTimeout(r, 1500));
+    await new Promise((r) => setTimeout(r, 2500));
     result = await extractFromProductPage(page);
     await page.close();
   });
