@@ -79,25 +79,60 @@ export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResul
     await page.setUserAgent(
       'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36'
     );
+    try {
+      await page.setExtraHTTPHeaders({
+        'accept-language': 'el-GR,el;q=0.9,en;q=0.8',
+        'cache-control': 'no-cache',
+      });
+    } catch {}
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
     // Try to accept cookie banners if present
     try {
-      await page.evaluate(() => {
+      // First, click any obvious selectors
+      const clicked = await page.evaluate(() => {
         const sel = [
           '#onetrust-accept-btn-handler',
           'button.cookie-accept',
           "button[aria-label*='accept' i]",
           "button[aria-label*='συμφωνώ' i]",
+          "button[aria-label*='αποδοχή' i]",
+          "button[aria-label*='αποδοχή όλων' i]",
         ];
         for (const s of sel) {
           const el = document.querySelector<HTMLButtonElement>(s);
-          if (el) { el.click(); break; }
+          if (el) { el.click(); return true; }
         }
+        // Fallback: find any button whose text matches common accept strings (Greek/English)
+        const texts = [
+          'Αποδοχή όλων', 'Αποδοχή', 'Συμφωνώ', 'Accept All', 'Accept', 'Allow All', 'Agree'
+        ].map(t => t.toLowerCase());
+        const btns = Array.from(document.querySelectorAll('button')) as HTMLButtonElement[];
+        for (const b of btns) {
+          const t = (b.textContent || '').trim().toLowerCase();
+          if (texts.some(x => t.includes(x))) { b.click(); return true; }
+        }
+        return false;
       });
+      if (!clicked) {
+        // Try clicking any element with role=button and matching text
+        await page.evaluate(() => {
+          const texts = ['Αποδοχή όλων', 'Αποδοχή', 'Συμφωνώ', 'Accept All', 'Accept', 'Allow All', 'Agree'].map(t => t.toLowerCase());
+          const els = Array.from(document.querySelectorAll('[role="button"], a, div, span')) as HTMLElement[];
+          for (const el of els) {
+            const t = (el.textContent || '').trim().toLowerCase();
+            if (texts.some(x => t.includes(x))) { (el as HTMLElement).click(); break; }
+          }
+        });
+      }
     } catch {}
     // Wait for price element to render
     try {
-      await page.waitForSelector('.main-price .price[data-price], .price[data-price], [data-testid="product-price"]', { timeout: 10000 });
+      await page.waitForSelector('.main-price .price[data-price], .price[data-price], [data-testid="product-price"]', { timeout: 15000 });
+      // Ensure data-price gets populated
+      await page.waitForFunction(() => {
+        const el = document.querySelector('.main-price .price[data-price], .price[data-price]') as HTMLElement | null;
+        return !!(el && el.getAttribute('data-price'));
+      }, { timeout: 15000 }).catch(() => {});
     } catch {}
     // Give client-side rendering some additional time
     await new Promise((r) => setTimeout(r, 2000));
