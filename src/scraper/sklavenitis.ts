@@ -79,9 +79,28 @@ export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResul
     await page.setUserAgent(
       'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36'
     );
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
-    // Give client-side rendering some time
-    await new Promise((r) => setTimeout(r, 2500));
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    // Try to accept cookie banners if present
+    try {
+      await page.evaluate(() => {
+        const sel = [
+          '#onetrust-accept-btn-handler',
+          'button.cookie-accept',
+          "button[aria-label*='accept' i]",
+          "button[aria-label*='συμφωνώ' i]",
+        ];
+        for (const s of sel) {
+          const el = document.querySelector<HTMLButtonElement>(s);
+          if (el) { el.click(); break; }
+        }
+      });
+    } catch {}
+    // Wait for price element to render
+    try {
+      await page.waitForSelector('.main-price .price[data-price], .price[data-price], [data-testid="product-price"]', { timeout: 10000 });
+    } catch {}
+    // Give client-side rendering some additional time
+    await new Promise((r) => setTimeout(r, 2000));
     result = await extractFromProductPage(page);
     await page.close();
   });
