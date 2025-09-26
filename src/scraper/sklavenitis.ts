@@ -91,6 +91,77 @@ const COOKIE_HEADER = [
   `Zone=${ZONE_COOKIE}`,
 ].join('; ');
 
+// Realistic user agents to rotate through
+const USER_AGENTS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+];
+
+// Helper function to get a random user agent
+function getRandomUserAgent(): string {
+  const index = Math.floor(Math.random() * USER_AGENTS.length);
+  return USER_AGENTS[index] ?? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+}
+
+// Helper function to create realistic headers
+function createHeaders(userAgent?: string): Record<string, string> {
+  const ua = userAgent || getRandomUserAgent();
+  return {
+    'User-Agent': ua,
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+    'Accept-Language': 'el-GR,el;q=0.9,en;q=0.8,en-US;q=0.5',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'DNT': '1',
+    'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-User': '?1',
+    'Cache-Control': 'max-age=0',
+    'Cookie': COOKIE_HEADER,
+    'Sec-Ch-Ua': ua.includes('Chrome') ? '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"' : '"Not_A Brand";v="8", "Chromium";v="120"',
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': ua.includes('Windows') ? '"Windows"' : ua.includes('Mac') ? '"macOS"' : '"Linux"',
+  };
+}
+
+// Helper function to sleep/delay
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Retry function with exponential backoff
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 3,
+  baseDelay: number = 1000
+): Promise<T> {
+  let lastError: Error;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error as Error;
+
+      if (attempt === maxRetries) {
+        break;
+      }
+
+      // Exponential backoff with jitter
+      const delay = baseDelay * Math.pow(2, attempt) + Math.random() * 1000;
+      console.warn(`Attempt ${attempt + 1} failed, retrying in ${delay}ms:`, lastError.message);
+      await sleep(delay);
+    }
+  }
+
+  throw lastError!;
+}
+
 function parseHtmlForProductData(html: string): ScrapeResult | null {
   // Product title extraction strategies (in order of preference)
   const titleSelectors = [
@@ -170,48 +241,46 @@ export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResul
   // Vercel cannot run browsers due to missing system libraries
   if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_VERSION) {
     try {
-      const res = await fetch(url, {
-        headers: {
-          'user-agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'accept-language': 'el-GR,el;q=0.9,en;q=0.8',
-          Cookie: COOKIE_HEADER,
-          'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-          'upgrade-insecure-requests': '1',
-          'sec-fetch-site': 'none',
-          'sec-fetch-mode': 'navigate',
-          'sec-fetch-user': '?1',
-          'sec-fetch-dest': 'document',
-          'cache-control': 'no-cache',
-          'pragma': 'no-cache',
-        },
-        // Add timeout to prevent hanging
-        signal: AbortSignal.timeout(30000),
-      });
+      const result = await retryWithBackoff(async () => {
+        // Add a small random delay to avoid detection patterns
+        await sleep(Math.random() * 2000);
 
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      }
+        const headers = createHeaders();
+        const res = await fetch(url, {
+          headers,
+          // Add timeout to prevent hanging
+          signal: AbortSignal.timeout(30000),
+        });
 
-      const html = await res.text();
-      const result = parseHtmlForProductData(html);
+        if (!res.ok) {
+          if (res.status === 403) {
+            throw new Error(`HTTP 403: Forbidden - Website may be blocking requests. Headers: ${JSON.stringify(headers)}`);
+          }
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
 
-      if (result) {
-        return result;
-      }
+        const html = await res.text();
+        const parsedResult = parseHtmlForProductData(html);
 
-      // Log for debugging
-      // eslint-disable-next-line no-console
-      console.warn('Serverless parse failed for URL:', url, {
-        status: res.status,
-        hasDataPrice: /data-price/i.test(html),
-        hasOgPrice: /product:price:amount/i.test(html),
-        hasJsonLd: /application\/ld\+json/i.test(html),
-        hasEuroSymbol: /€/.test(html),
-        contentLength: html.length,
-      });
+        if (parsedResult) {
+          return parsedResult;
+        }
 
-      throw new Error('Unable to extract product data from HTML response');
+        // Log for debugging
+        // eslint-disable-next-line no-console
+        console.warn('Serverless parse failed for URL:', url, {
+          status: res.status,
+          hasDataPrice: /data-price/i.test(html),
+          hasOgPrice: /product:price:amount/i.test(html),
+          hasJsonLd: /application\/ld\+json/i.test(html),
+          hasEuroSymbol: /€/.test(html),
+          contentLength: html.length,
+        });
+
+        throw new Error('Unable to extract product data from HTML response');
+      }, 3, 2000);
+
+      return result;
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Serverless scraping failed:', error);
@@ -219,34 +288,37 @@ export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResul
     }
   }
 
-  // Local development: use browser automation (fallback to HTTP if needed)
+  // Local development: use HTTP with retry logic (fallback to browser if needed)
   // This code only runs in local development, never in Vercel
   try {
-    const res = await fetch(url, {
-      headers: {
-        'user-agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'accept-language': 'el-GR,el;q=0.9,en;q=0.8',
-        Cookie: COOKIE_HEADER,
-        'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'upgrade-insecure-requests': '1',
-        'sec-fetch-site': 'none',
-        'sec-fetch-mode': 'navigate',
-        'sec-fetch-user': '?1',
-        'sec-fetch-dest': 'document',
-        'cache-control': 'no-cache',
-        'pragma': 'no-cache',
-      },
-      signal: AbortSignal.timeout(30000),
-    });
+    const result = await retryWithBackoff(async () => {
+      // Add a small random delay to avoid detection patterns
+      await sleep(Math.random() * 1000);
 
-    if (res.ok) {
-      const html = await res.text();
-      const result = parseHtmlForProductData(html);
-      if (result) {
-        return result;
+      const headers = createHeaders();
+      const res = await fetch(url, {
+        headers,
+        signal: AbortSignal.timeout(30000),
+      });
+
+      if (!res.ok) {
+        if (res.status === 403) {
+          throw new Error(`HTTP 403: Forbidden - Website may be blocking requests`);
+        }
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
       }
-    }
+
+      const html = await res.text();
+      const parsedResult = parseHtmlForProductData(html);
+
+      if (parsedResult) {
+        return parsedResult;
+      }
+
+      throw new Error('Unable to extract product data from HTML response');
+    }, 2, 1000);
+
+    return result;
   } catch (error) {
     // eslint-disable-next-line no-console
     console.warn('Local HTTP fallback failed, using browser automation:', error);
