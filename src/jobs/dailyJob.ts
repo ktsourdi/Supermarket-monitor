@@ -46,7 +46,7 @@ export async function runDailyJob(): Promise<void> {
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('Scrape error for', item.product_url, err);
-      await sendTelegramMessage(`Error scraping: ${item.product_url}\n${(err as Error).message}`);
+      await sendTelegramMessage(`Error scraping: ${item.product_url}\n${err instanceof Error ? err.message : String(err)}`);
     }
   }
 

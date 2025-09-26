@@ -345,7 +345,7 @@ export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResul
         { name: 'Zone', value: ZONE_COOKIE, domain: '.sklavenitis.gr', path: '/' },
       );
     } catch {}
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 40000 });
     await new Promise(r=>setTimeout(r,1500));
 
     // Try to accept cookie banners if present
