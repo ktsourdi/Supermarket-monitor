@@ -6,28 +6,28 @@ export type BrowserLike = PuppeteerBrowser | PuppeteerCoreBrowser;
 export type ScrapeResult = { product: string; price: number; currency: string };
 
 async function launchBrowser(): Promise<BrowserLike> {
-  // In serverless environments like Vercel, we cannot launch browsers
-  // due to missing system libraries (libnss3.so, etc.)
+  // In Vercel/serverless, use puppeteer-core with @sparticuz/chromium.
   if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_VERSION) {
-    throw new Error('Browser automation is not supported in serverless environments. Use HTTP-based scraping instead.');
+    const { default: chromium } = await import('@sparticuz/chromium');
+    const puppeteer = await import('puppeteer-core');
+
+    // Sparticuz chromium provides these sensible defaults.
+    // Making them explicit in case of version changes.
+    await chromium.font('https://raw.githack.com/googlei18n/noto-cjk/main/NotoSansCJK-Regular.ttc');
+
+    const executablePath = await chromium.executablePath();
+
+    return await puppeteer.launch({
+      headless: chromium.headless,
+      args: chromium.args,
+      executablePath: executablePath ?? undefined,
+      defaultViewport: chromium.defaultViewport,
+    });
   }
 
   // Local/dev: use full puppeteer which bundles a Chromium binary.
   const puppeteer = await import('puppeteer');
-  return await puppeteer.launch({
-    headless: true,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--no-first-run',
-      '--disable-default-apps',
-      '--disable-background-timer-throttling',
-      '--disable-renderer-backgrounding',
-      '--disable-backgrounding-occluded-windows',
-    ],
-  });
+  return await puppeteer.launch({ headless: true });
 }
 
 export async function withBrowser(action: (browser: BrowserLike) => Promise<void>) {

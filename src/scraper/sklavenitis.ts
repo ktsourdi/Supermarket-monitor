@@ -141,7 +141,7 @@ function createHeaders(userAgent?: string): Record<string, string> {
     'Cache-Control': Math.random() < 0.5 ? 'max-age=0' : 'no-cache',
     'Pragma': Math.random() < 0.3 ? 'no-cache' : undefined,
     'Cookie': COOKIE_HEADER,
-    'Sec-Ch-Ua': ua.includes('Chrome') ? `"Not_A Brand";v="8", "Chromium";v="${chromeVersion}", "Google Chrome";v="${chromeVersion}"` : `"Not_A Brand";v="8", "Chromium";v="${chromeVersion}"`,
+    'Sec-Ch-Ua': ua.includes('Chrome') ? '"Not_A Brand";v="8", "Chromium";v="' + chromeVersion + '", "Google Chrome";v="' + chromeVersion + '"' : '"Not_A Brand";v="8", "Chromium";v="' + chromeVersion + '"',
     'Sec-Ch-Ua-Mobile': isMobile ? '?1' : '?0',
     'Sec-Ch-Ua-Platform': ua.includes('Windows') ? '"Windows"' : ua.includes('Mac') ? '"macOS"' : '"Linux"',
     // Add more realistic browser headers
@@ -150,8 +150,8 @@ function createHeaders(userAgent?: string): Record<string, string> {
     'Sec-Ch-Ua-Arch': '"x86"',
     'Sec-Ch-Ua-Branding': ua.includes('Chrome') ? '"Google Chrome"' : '"Chromium"',
     'Sec-Ch-Ua-Form-Factors': isMobile ? '"Mobile"' : '"Desktop"',
-    'Sec-Ch-Ua-Full-Version': ua.includes('Chrome') ? `"${chromeVersion}.0.0.0"` : `"${chromeVersion}.0.0.0"`,
-    'Sec-Ch-Ua-Full-Version-List': ua.includes('Chrome') ? `"Not_A Brand";v="8.0.0.0", "Chromium";v="${chromeVersion}.0.0.0", "Google Chrome";v="${chromeVersion}.0.0.0"` : `"Not_A Brand";v="8.0.0.0", "Chromium";v="${chromeVersion}.0.0.0"`,
+    'Sec-Ch-Ua-Full-Version': '"' + chromeVersion + '.0.0.0"',
+    'Sec-Ch-Ua-Full-Version-List': ua.includes('Chrome') ? '"Not_A Brand";v="8.0.0.0", "Chromium";v="' + chromeVersion + '.0.0.0", "Google Chrome";v="' + chromeVersion + '.0.0.0"' : '"Not_A Brand";v="8.0.0.0", "Chromium";v="' + chromeVersion + '.0.0.0"',
     'Sec-Ch-Ua-Model': isMobile ? '"Pixel 7"' : '""',
     // Add realistic referrer
     'Referer': Math.random() < 0.7 ? 'https://www.google.com/' : undefined,
@@ -219,13 +219,43 @@ async function retryWithBackoff<T>(
   throw lastError!;
 }
 
+// Build a list of proxies from env or defaults
+function getProxyList(): string[] {
+  const listFromEnv = (process.env.CORS_PROXY_URLS || '').split(',').map(s => s.trim()).filter(Boolean);
+  const single = (process.env.CORS_PROXY_URL || '').trim();
+  const out: string[] = [];
+  if (listFromEnv.length) out.push(...listFromEnv);
+  if (single) out.push(single);
+  if (!out.length) {
+    out.push(
+      'https://api.allorigins.win/raw?url=',
+      'https://corsproxy.io/?',
+      'https://thingproxy.freeboard.io/fetch/',
+      'https://cors-anywhere.herokuapp.com/'
+    );
+  }
+  // Deduplicate while preserving order
+  return Array.from(new Set(out));
+}
+
+// Build a proxied URL for various proxy styles
+function buildProxiedUrl(proxyBase: string, targetUrl: string): string {
+  if (proxyBase.endsWith('=') || proxyBase.endsWith('?')) {
+    return proxyBase + encodeURIComponent(targetUrl);
+  }
+  if (proxyBase.endsWith('/')) {
+    return proxyBase + targetUrl;
+  }
+  return proxyBase + targetUrl;
+}
+
 function parseHtmlForProductData(html: string): ScrapeResult | null {
   // Product title extraction strategies (in order of preference)
   const titleSelectors = [
-    /<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["'][^>]*>/i,
-    /<meta[^>]*name=["']title["'][^>]*content=["']([^"']+)["'][^>]*>/i,
-    /<h1[^>]*class=["'][^"']*product[^"']*["'][^>]*>([^<]+)<\/h1>/i,
-    /<h1[^>]*itemprop=["']name["'][^>]*>([^<]+)<\/h1>/i,
+    /<meta[^>]*property=['"]og:title['"][^>]*content=['"]([^'"]+)['"][^>]*>/i,
+    /<meta[^>]*name=['"]title['"][^>]*content=['"]([^'"]+)['"][^>]*>/i,
+    /<h1[^>]*class=['"][^'"]*product[^'"]*['"][^>]*>([^<]+)<\/h1>/i,
+    /<h1[^>]*itemprop=['"]name['"][^>]*>([^<]+)<\/h1>/i,
     /<title[^>]*>([^<]+)<\/title>/i,
   ];
 
@@ -243,12 +273,12 @@ function parseHtmlForProductData(html: string): ScrapeResult | null {
     // Sklavenitis specific data-price attribute
     /data-price\s*=\s*"([0-9.,]+)"/i,
     // Standard product schema price
-    /<meta[^>]*property=["']product:price:amount["'][^>]*content=["']([^"']+)["'][^>]*>/i,
+    /<meta[^>]*property=['"]product:price:amount['"][^>]*content=['"]([^'"]+)['"][^>]*>/i,
     // JSON-LD structured data
     /"price"\s*:\s*"([0-9.,]+)"/i,
     /"price"\s*:\s*([0-9.,]+)/i,
     // Generic price patterns
-    /<span[^>]*class=["'][^"']*price[^"']*["'][^>]*>([^<]+)<\/span>/i,
+    /<span[^>]*class=['"][^'"]*price[^'"]*['"][^>]*>([^<]+)<\/span>/i,
     /(\d+[\d\.,]*)\s*€/i,
     /€\s*(\d+[\d\.,]*)/i,
   ];
@@ -264,7 +294,7 @@ function parseHtmlForProductData(html: string): ScrapeResult | null {
 
   // Extract from JSON-LD scripts if not found above
   if (!priceRaw) {
-    const scriptRegex = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+    const scriptRegex = /<script[^>]*type=['"]application\/ld\+json['"][^>]*>([\s\S]*?)<\/script>/gi;
     let m: RegExpExecArray | null;
     while ((m = scriptRegex.exec(html)) !== null) {
       const jsonText = (m[1] ?? '').trim();
@@ -294,263 +324,9 @@ function parseHtmlForProductData(html: string): ScrapeResult | null {
 }
 
 export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResult | null> {
-  // For serverless environments (Vercel), use only HTTP fetch + parse
-  // Vercel cannot run browsers due to missing system libraries
-  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_VERSION) {
-    try {
-      const result = await retryWithBackoff(async (userAgent) => {
-        // Enhanced session management - reset session periodically
-        requestCount++;
-        if (requestCount >= MAX_REQUESTS_PER_SESSION) {
-          // Force session reset by clearing cookies and using new session
-          console.log('Resetting session after', MAX_REQUESTS_PER_SESSION, 'requests');
-          requestCount = 0;
-        }
-
-        // Implement enhanced request throttling to avoid rate limiting
-        const now = Date.now();
-        const timeSinceLastRequest = now - lastRequestTime;
-        if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
-          await sleep(MIN_REQUEST_INTERVAL - timeSinceLastRequest);
-        }
-        lastRequestTime = Date.now();
-
-        // More human-like timing: vary delays based on content type
-        const baseDelay = Math.random() * 3000 + 2000; // 2-5 seconds
-        await sleep(baseDelay);
-
-        const headers = cleanHeaders(createHeaders(userAgent));
-
-        // Try to establish a realistic browsing session with enhanced patterns
-        try {
-          // Always start with the homepage to establish session
-          await fetch('https://www.sklavenitis.gr/', {
-            headers: {
-              ...headers,
-              'Sec-Fetch-Dest': 'document',
-              'Sec-Fetch-Mode': 'navigate',
-              'Sec-Fetch-Site': 'none',
-              'Sec-Fetch-User': '?1',
-            },
-            signal: AbortSignal.timeout(10000),
-          });
-          await sleep(Math.random() * 800 + 600); // 0.6-1.4 seconds (reading homepage)
-
-          // Simulate browsing behavior by visiting category pages
-          const categoryUrls = [
-            'https://www.sklavenitis.gr/eidi-proinoy-rofimata/',
-            'https://www.sklavenitis.gr/eidi-proinoy-rofimata/kafedes-rofimata-afepsimata/',
-            'https://www.sklavenitis.gr/eidi-proinoy-rofimata/kafedes-rofimata-afepsimata/kafedes-espresso-se-kapsoules/'
-          ];
-
-          // Visit 1-3 category pages to simulate natural browsing
-          const numCategoryVisits = Math.floor(Math.random() * 3) + 1; // 1-3 visits
-          for (let i = 0; i < numCategoryVisits; i++) {
-            const categoryIndex = i % categoryUrls.length;
-            const categoryUrl = categoryUrls[categoryIndex]!;
-
-            // Add some randomization to the category browsing
-            const categoryDelay = Math.random() * 1000 + 800; // 0.8-1.8 seconds (reading category)
-            await sleep(categoryDelay);
-
-            await fetch(categoryUrl, {
-              headers: {
-                ...headers,
-                'Sec-Fetch-Dest': 'document',
-                'Sec-Fetch-Mode': 'navigate',
-                'Sec-Fetch-Site': 'same-origin',
-                'Sec-Fetch-User': '?1',
-              },
-              signal: AbortSignal.timeout(10000),
-            });
-
-            // Sometimes spend more time on interesting categories
-            if (Math.random() < 0.3) { // 30% chance
-              await sleep(Math.random() * 1500 + 1000); // Extra 1-2.5 seconds
-            }
-          }
-        } catch (error) {
-          // If pre-requests fail, continue with product request anyway
-          console.warn('Pre-requests failed:', error);
-        }
-
-        // Try multiple approaches if the first one fails
-        let res: Response;
-        let lastError: Error;
-
-        // Approach 1: Standard approach with full session
-        try {
-          res = await fetch(url, {
-            headers: {
-              ...headers,
-              'Sec-Fetch-Dest': 'document',
-              'Sec-Fetch-Mode': 'navigate',
-              'Sec-Fetch-Site': 'same-origin',
-              'Sec-Fetch-User': '?1',
-            },
-            signal: AbortSignal.timeout(30000),
-            keepalive: true,
-          });
-
-          if (res.ok || res.status !== 403) {
-            // Success or different error (not 403), proceed with parsing
-            const html = await res.text();
-            const parsedResult = parseHtmlForProductData(html);
-
-            if (parsedResult) {
-              return parsedResult;
-            }
-
-            if (!res.ok) {
-              throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-            }
-            throw new Error('Unable to extract product data from HTML response');
-          }
-
-          lastError = new Error(`HTTP 403: Forbidden with full session. Headers: ${JSON.stringify(headers)}`);
-        } catch (error) {
-          lastError = error as Error;
-        }
-
-        // Approach 2: Simplified approach without extensive session
-        try {
-          console.warn('Full session failed, trying simplified approach...');
-          await sleep(1000); // Brief pause
-
-          const simpleHeaders = cleanHeaders(createHeaders(userAgent));
-          res = await fetch(url, {
-            headers: {
-              ...simpleHeaders,
-              'Sec-Fetch-Dest': 'document',
-              'Sec-Fetch-Mode': 'navigate',
-              'Sec-Fetch-Site': 'cross-site',
-            },
-            signal: AbortSignal.timeout(30000),
-            keepalive: true,
-          });
-
-          if (res.ok || res.status !== 403) {
-            // Success or different error (not 403), proceed with parsing
-            const html = await res.text();
-            const parsedResult = parseHtmlForProductData(html);
-
-            if (parsedResult) {
-              return parsedResult;
-            }
-
-            if (!res.ok) {
-              throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-            }
-            throw new Error('Unable to extract product data from HTML response');
-          }
-
-          lastError = new Error(`HTTP 403: Forbidden with simplified approach. Headers: ${JSON.stringify(simpleHeaders)}`);
-        } catch (error) {
-          lastError = error as Error;
-        }
-
-        // Approach 3: Try using a CORS proxy as last resort (if enabled)
-        if (process.env.CORS_PROXY_URL) {
-          try {
-            console.warn('Trying CORS proxy as last resort...');
-            await sleep(2000); // Longer pause before proxy attempt
-
-            const proxyUrl = `${process.env.CORS_PROXY_URL}${url}`;
-            const proxyHeaders = cleanHeaders(createHeaders(userAgent));
-
-            // Remove some headers that might cause issues with proxy
-            delete proxyHeaders['Sec-Fetch-Site'];
-            delete proxyHeaders['Sec-Fetch-Mode'];
-            delete proxyHeaders['Sec-Fetch-Dest'];
-            delete proxyHeaders['Sec-Fetch-User'];
-
-            res = await fetch(proxyUrl, {
-              headers: proxyHeaders,
-              signal: AbortSignal.timeout(30000),
-              keepalive: true,
-            });
-
-            if (res.ok) {
-              const html = await res.text();
-              const parsedResult = parseHtmlForProductData(html);
-
-              if (parsedResult) {
-                return parsedResult;
-              }
-            }
-
-            lastError = new Error(`CORS proxy also failed with status ${res.status}. Headers: ${JSON.stringify(proxyHeaders)}`);
-          } catch (error) {
-            lastError = error as Error;
-          }
-        }
-
-        // If we get here, all approaches failed
-        throw lastError;
-      }, 3, 2000);
-
-      return result;
-    } catch (error) {
-      // eslint-disable-next-line no-console
-      console.error('Serverless scraping failed:', error);
-      throw new Error(`Serverless scraping failed: ${(error as Error).message}`);
-    }
-  }
-
-  // Local development: use HTTP with retry logic (fallback to browser if needed)
-  // This code only runs in local development, never in Vercel
-  try {
-    const result = await retryWithBackoff(async (userAgent) => {
-      // Enhanced session management for local development too
-      requestCount++;
-      if (requestCount >= MAX_REQUESTS_PER_SESSION) {
-        console.log('Resetting session after', MAX_REQUESTS_PER_SESSION, 'requests');
-        requestCount = 0;
-      }
-
-      // Implement enhanced request throttling to avoid rate limiting
-      const now = Date.now();
-      const timeSinceLastRequest = now - lastRequestTime;
-      if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
-        await sleep(MIN_REQUEST_INTERVAL - timeSinceLastRequest);
-      }
-      lastRequestTime = Date.now();
-
-      // More human-like timing: vary delays based on content type
-      const baseDelay = Math.random() * 2000 + 1500; // 1.5-3.5 seconds
-      await sleep(baseDelay);
-
-      const headers = cleanHeaders(createHeaders(userAgent));
-      const res = await fetch(url, {
-        headers,
-        signal: AbortSignal.timeout(30000),
-        keepalive: true,
-      });
-
-      if (!res.ok) {
-        if (res.status === 403) {
-          throw new Error(`HTTP 403: Forbidden - Website may be blocking requests`);
-        }
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      }
-
-      const html = await res.text();
-      const parsedResult = parseHtmlForProductData(html);
-
-      if (parsedResult) {
-        return parsedResult;
-      }
-
-      throw new Error('Unable to extract product data from HTML response');
-    }, 2, 1000);
-
-    return result;
-  } catch (error) {
-    // eslint-disable-next-line no-console
-    console.warn('Local HTTP fallback failed, using browser automation:', error);
-  }
-
-  // Full browser automation for local development only
+  // HTTP-based scraping has proven unreliable due to advanced bot detection.
+  // This implementation now exclusively uses a headless browser for all environments,
+  // relying on @sparticuz/chromium for serverless deployment on Vercel.
   let result: ScrapeResult | null = null;
   await withBrowser(async (browser: BrowserLike) => {
     const page: any = await browser.newPage();

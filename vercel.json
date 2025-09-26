@@ -1,6 +1,12 @@
 {
   "version": 2,
   "outputDirectory": "public",
+  "functions": {
+    "api/**/*.ts": {
+      "maxDuration": 45,
+      "memory": 3008
+    }
+  },
   "crons": [
     {
       "path": "/api/run",
