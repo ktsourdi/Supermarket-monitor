@@ -1,19 +1,11 @@
 {
   "version": 2,
   "outputDirectory": "public",
-  "functions": {
-    "api/**/*.ts": {
-      "runtime": "nodejs18.x"
-    }
-  },
   "crons": [
     {
       "path": "/api/run",
       "schedule": "0 6 * * *"
     }
-  ],
-  "env": {
-    "NODE_ENV": "production"
-  }
+  ]
 }
 
