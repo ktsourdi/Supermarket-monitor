@@ -98,6 +98,9 @@ const USER_AGENTS = [
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
   'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  // Add some older versions to vary the fingerprint
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36',
 ];
 
 // Helper function to get a random user agent
@@ -109,7 +112,8 @@ function getRandomUserAgent(): string {
 // Helper function to create realistic headers
 function createHeaders(userAgent?: string): Record<string, string> {
   const ua = userAgent || getRandomUserAgent();
-  return {
+  const isMobile = Math.random() < 0.1; // 10% chance of mobile
+  const headers: Record<string, string | undefined> = {
     'User-Agent': ua,
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
     'Accept-Language': 'el-GR,el;q=0.9,en;q=0.8,en-US;q=0.5',
@@ -121,12 +125,34 @@ function createHeaders(userAgent?: string): Record<string, string> {
     'Sec-Fetch-Mode': 'navigate',
     'Sec-Fetch-Site': 'none',
     'Sec-Fetch-User': '?1',
-    'Cache-Control': 'max-age=0',
+    'Cache-Control': Math.random() < 0.5 ? 'max-age=0' : 'no-cache',
+    'Pragma': Math.random() < 0.3 ? 'no-cache' : undefined,
     'Cookie': COOKIE_HEADER,
     'Sec-Ch-Ua': ua.includes('Chrome') ? '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"' : '"Not_A Brand";v="8", "Chromium";v="120"',
-    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Mobile': isMobile ? '?1' : '?0',
     'Sec-Ch-Ua-Platform': ua.includes('Windows') ? '"Windows"' : ua.includes('Mac') ? '"macOS"' : '"Linux"',
+    // Add realistic referrer
+    'Referer': Math.random() < 0.7 ? 'https://www.google.com/' : undefined,
+    'Origin': undefined, // Don't set origin for cross-site requests
   };
+
+  // Remove undefined values and return clean object
+  return Object.fromEntries(
+    Object.entries(headers).filter(([_, value]) => value !== undefined)
+  ) as Record<string, string>;
+}
+
+// Clean headers to remove any Vercel-specific identifiers
+function cleanHeaders(headers: Record<string, string>): Record<string, string> {
+  const cleaned = { ...headers };
+
+  // Remove any Vercel-specific headers
+  delete cleaned['x-vercel-id'];
+  delete cleaned['x-vercel-deployment-url'];
+  delete cleaned['x-vercel-request-id'];
+  delete cleaned['x-vercel-forwarded-for'];
+
+  return cleaned;
 }
 
 // Helper function to sleep/delay
@@ -134,17 +160,20 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Retry function with exponential backoff
+// Retry function with exponential backoff and user agent rotation
 async function retryWithBackoff<T>(
-  fn: () => Promise<T>,
+  fn: (userAgent?: string) => Promise<T>,
   maxRetries: number = 3,
   baseDelay: number = 1000
 ): Promise<T> {
   let lastError: Error;
+  let userAgent: string | undefined;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      return await fn();
+      // Use a different user agent for each retry attempt
+      userAgent = getRandomUserAgent();
+      return await fn(userAgent);
     } catch (error) {
       lastError = error as Error;
 
@@ -154,7 +183,7 @@ async function retryWithBackoff<T>(
 
       // Exponential backoff with jitter
       const delay = baseDelay * Math.pow(2, attempt) + Math.random() * 1000;
-      console.warn(`Attempt ${attempt + 1} failed, retrying in ${delay}ms:`, lastError.message);
+      console.warn(`Attempt ${attempt + 1} failed (UA: ${userAgent}), retrying in ${delay}ms:`, lastError.message);
       await sleep(delay);
     }
   }
@@ -241,15 +270,59 @@ export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResul
   // Vercel cannot run browsers due to missing system libraries
   if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_VERSION) {
     try {
-      const result = await retryWithBackoff(async () => {
+      const result = await retryWithBackoff(async (userAgent) => {
         // Add a small random delay to avoid detection patterns
-        await sleep(Math.random() * 2000);
+        await sleep(Math.random() * 2000 + 1000); // 1-3 seconds
 
-        const headers = createHeaders();
+        const headers = cleanHeaders(createHeaders(userAgent));
+
+        // Try to establish a session by visiting the homepage first (sometimes helps with anti-bot)
+        try {
+          await fetch('https://www.sklavenitis.gr/', {
+            headers: {
+              ...headers,
+              'Sec-Fetch-Dest': 'document',
+              'Sec-Fetch-Mode': 'navigate',
+              'Sec-Fetch-Site': 'none',
+              'Sec-Fetch-User': '?1',
+            },
+            signal: AbortSignal.timeout(10000),
+          });
+          // Small delay between homepage and product request
+          await sleep(Math.random() * 500 + 200);
+
+          // Sometimes visit a category page to simulate browsing behavior
+          if (Math.random() < 0.4) { // 40% chance
+            const categoryUrl = 'https://www.sklavenitis.gr/eidi-proinoy-rofimata/kafedes-rofimata-afepsimata/';
+            await fetch(categoryUrl, {
+              headers: {
+                ...headers,
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'same-origin',
+                'Sec-Fetch-User': '?1',
+              },
+              signal: AbortSignal.timeout(10000),
+            });
+            await sleep(Math.random() * 800 + 400); // 0.4-1.2 seconds
+          }
+        } catch (error) {
+          // If pre-requests fail, continue with product request anyway
+          console.warn('Pre-requests failed:', error);
+        }
+
         const res = await fetch(url, {
-          headers,
+          headers: {
+            ...headers,
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'same-origin',
+            'Sec-Fetch-User': '?1',
+          },
           // Add timeout to prevent hanging
           signal: AbortSignal.timeout(30000),
+          // Remove any automatic headers that might identify this as a bot
+          keepalive: true,
         });
 
         if (!res.ok) {
@@ -291,14 +364,15 @@ export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResul
   // Local development: use HTTP with retry logic (fallback to browser if needed)
   // This code only runs in local development, never in Vercel
   try {
-    const result = await retryWithBackoff(async () => {
+    const result = await retryWithBackoff(async (userAgent) => {
       // Add a small random delay to avoid detection patterns
-      await sleep(Math.random() * 1000);
+      await sleep(Math.random() * 1000 + 500); // 0.5-1.5 seconds
 
-      const headers = createHeaders();
+      const headers = cleanHeaders(createHeaders(userAgent));
       const res = await fetch(url, {
         headers,
         signal: AbortSignal.timeout(30000),
+        keepalive: true,
       });
 
       if (!res.ok) {
