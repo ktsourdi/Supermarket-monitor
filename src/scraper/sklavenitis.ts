@@ -91,14 +91,89 @@ const COOKIE_HEADER = [
   `Zone=${ZONE_COOKIE}`,
 ].join('; ');
 
+function parseHtmlForProductData(html: string): ScrapeResult | null {
+  // Product title extraction strategies (in order of preference)
+  const titleSelectors = [
+    /<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["'][^>]*>/i,
+    /<meta[^>]*name=["']title["'][^>]*content=["']([^"']+)["'][^>]*>/i,
+    /<h1[^>]*class=["'][^"']*product[^"']*["'][^>]*>([^<]+)<\/h1>/i,
+    /<h1[^>]*itemprop=["']name["'][^>]*>([^<]+)<\/h1>/i,
+    /<title[^>]*>([^<]+)<\/title>/i,
+  ];
+
+  let title = '';
+  for (const selector of titleSelectors) {
+    const match = html.match(selector);
+    if (match && match[1] && match[1].trim()) {
+      title = match[1].trim();
+      break;
+    }
+  }
+
+  // Price extraction strategies (in order of preference)
+  const priceSelectors = [
+    // Sklavenitis specific data-price attribute
+    /data-price\s*=\s*"([0-9.,]+)"/i,
+    // Standard product schema price
+    /<meta[^>]*property=["']product:price:amount["'][^>]*content=["']([^"']+)["'][^>]*>/i,
+    // JSON-LD structured data
+    /"price"\s*:\s*"([0-9.,]+)"/i,
+    /"price"\s*:\s*([0-9.,]+)/i,
+    // Generic price patterns
+    /<span[^>]*class=["'][^"']*price[^"']*["'][^>]*>([^<]+)<\/span>/i,
+    /(\d+[\d\.,]*)\s*€/i,
+    /€\s*(\d+[\d\.,]*)/i,
+  ];
+
+  let priceRaw = '';
+  for (const selector of priceSelectors) {
+    const match = html.match(selector);
+    if (match && match[1] && match[1].trim()) {
+      priceRaw = match[1].trim();
+      break;
+    }
+  }
+
+  // Extract from JSON-LD scripts if not found above
+  if (!priceRaw) {
+    const scriptRegex = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+    let m: RegExpExecArray | null;
+    while ((m = scriptRegex.exec(html)) !== null) {
+      const jsonText = (m[1] ?? '').trim();
+      if (!jsonText) continue;
+      try {
+        const data = JSON.parse(jsonText);
+        const arr = Array.isArray(data) ? data : [data];
+        for (const obj of arr) {
+          const offers = obj?.offers ? (Array.isArray(obj.offers) ? obj.offers : [obj.offers]) : [];
+          for (const o of offers) {
+            const cand = o?.price ?? o?.lowPrice ?? o?.highPrice;
+            if (cand) { priceRaw = String(cand); break; }
+          }
+          if (priceRaw) break;
+        }
+        if (priceRaw) break;
+      } catch {}
+    }
+  }
+
+  const priceNum = normalizePrice(priceRaw);
+  if (title && priceNum != null) {
+    return { product: title, price: priceNum, currency: 'EUR' };
+  }
+
+  return null;
+}
+
 export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResult | null> {
-  // Fast path for serverless (no headless browser): try HTTP fetch + parse
+  // For serverless environments (Vercel), use only HTTP fetch + parse
+  // Vercel cannot run browsers due to missing system libraries
   if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_VERSION) {
     try {
       const res = await fetch(url, {
         headers: {
           'user-agent':
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           'accept-language': 'el-GR,el;q=0.9,en;q=0.8',
           Cookie: COOKIE_HEADER,
           'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
@@ -107,63 +182,82 @@ export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResul
           'sec-fetch-mode': 'navigate',
           'sec-fetch-user': '?1',
           'sec-fetch-dest': 'document',
+          'cache-control': 'no-cache',
+          'pragma': 'no-cache',
         },
+        // Add timeout to prevent hanging
+        signal: AbortSignal.timeout(30000),
       });
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
+
       const html = await res.text();
-      // Product title: og:title
-      const titleMatch = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["'][^>]*>/i);
-      const title = titleMatch?.[1]?.trim() ?? '';
-      // Price strategies (ordered)
-      let priceRaw = html.match(/data-price\s*=\s*"([0-9.,]+)"/i)?.[1] ?? '';
-      if (!priceRaw) {
-        priceRaw = html.match(/<meta[^>]*property=["']product:price:amount["'][^>]*content=["']([^"']+)["'][^>]*>/i)?.[1] ?? '';
+      const result = parseHtmlForProductData(html);
+
+      if (result) {
+        return result;
       }
-      if (!priceRaw) {
-        const scriptRegex = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
-        let m: RegExpExecArray | null;
-        while ((m = scriptRegex.exec(html)) !== null) {
-          const jsonText = (m[1] ?? '').trim();
-          if (!jsonText) continue;
-          try {
-            const data = JSON.parse(jsonText);
-            const arr = Array.isArray(data) ? data : [data];
-            for (const obj of arr) {
-              const offers = obj?.offers ? (Array.isArray(obj.offers) ? obj.offers : [obj.offers]) : [];
-              for (const o of offers) {
-                const cand = o?.price ?? o?.lowPrice ?? o?.highPrice;
-                if (cand) { priceRaw = String(cand); break; }
-              }
-              if (priceRaw) break;
-            }
-            if (priceRaw) break;
-          } catch {}
-        }
-      }
-      if (!priceRaw) {
-        priceRaw = html.match(/\bprice\b\s*[:=]\s*\"?([0-9.,]+)\"?/i)?.[1] ?? '';
-      }
-      const priceNum = normalizePrice(priceRaw);
-      if (title && priceNum != null) {
-        return { product: title, price: priceNum, currency: 'EUR' };
-      }
+
+      // Log for debugging
       // eslint-disable-next-line no-console
-      console.warn('Serverless parse miss', {
+      console.warn('Serverless parse failed for URL:', url, {
         status: res.status,
         hasDataPrice: /data-price/i.test(html),
         hasOgPrice: /product:price:amount/i.test(html),
         hasJsonLd: /application\/ld\+json/i.test(html),
+        hasEuroSymbol: /€/.test(html),
+        contentLength: html.length,
       });
-    } catch {}
-    // On serverless (e.g., Vercel), avoid launching a headless browser due to missing system libs (libnss3).
-    // Rely solely on HTML parsing above.
-    return null;
+
+      throw new Error('Unable to extract product data from HTML response');
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Serverless scraping failed:', error);
+      throw new Error(`Serverless scraping failed: ${(error as Error).message}`);
+    }
   }
 
+  // Local development: use browser automation (fallback to HTTP if needed)
+  // This code only runs in local development, never in Vercel
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'user-agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'accept-language': 'el-GR,el;q=0.9,en;q=0.8',
+        Cookie: COOKIE_HEADER,
+        'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'upgrade-insecure-requests': '1',
+        'sec-fetch-site': 'none',
+        'sec-fetch-mode': 'navigate',
+        'sec-fetch-user': '?1',
+        'sec-fetch-dest': 'document',
+        'cache-control': 'no-cache',
+        'pragma': 'no-cache',
+      },
+      signal: AbortSignal.timeout(30000),
+    });
+
+    if (res.ok) {
+      const html = await res.text();
+      const result = parseHtmlForProductData(html);
+      if (result) {
+        return result;
+      }
+    }
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.warn('Local HTTP fallback failed, using browser automation:', error);
+  }
+
+  // Full browser automation for local development only
   let result: ScrapeResult | null = null;
   await withBrowser(async (browser: BrowserLike) => {
     const page: any = await browser.newPage();
     await page.setUserAgent(
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     );
     try {
       await page.setExtraHTTPHeaders({

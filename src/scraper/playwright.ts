@@ -6,28 +6,28 @@ export type BrowserLike = PuppeteerBrowser | PuppeteerCoreBrowser;
 export type ScrapeResult = { product: string; price: number; currency: string };
 
 async function launchBrowser(): Promise<BrowserLike> {
-  // In Vercel/serverless, use puppeteer-core with @sparticuz/chromium.
+  // In serverless environments like Vercel, we cannot launch browsers
+  // due to missing system libraries (libnss3.so, etc.)
   if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_VERSION) {
-    const { default: chromium } = await import('@sparticuz/chromium');
-    const puppeteer = await import('puppeteer-core');
-    if (typeof (chromium as unknown as { setHeadlessMode?: (h: boolean) => void }).setHeadlessMode === 'function') {
-      (chromium as unknown as { setHeadlessMode: (h: boolean) => void }).setHeadlessMode(true);
-    }
-    if (typeof (chromium as unknown as { setGraphicsMode?: (g: boolean) => void }).setGraphicsMode === 'function') {
-      (chromium as unknown as { setGraphicsMode: (g: boolean) => void }).setGraphicsMode(false);
-    }
-    const executablePath = await chromium.executablePath();
-    return await puppeteer.launch({
-      headless: chromium.headless,
-      args: chromium.args,
-      executablePath: executablePath ?? undefined,
-      defaultViewport: chromium.defaultViewport,
-    });
+    throw new Error('Browser automation is not supported in serverless environments. Use HTTP-based scraping instead.');
   }
 
   // Local/dev: use full puppeteer which bundles a Chromium binary.
   const puppeteer = await import('puppeteer');
-  return await puppeteer.launch({ headless: true });
+  return await puppeteer.launch({
+    headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--no-first-run',
+      '--disable-default-apps',
+      '--disable-background-timer-throttling',
+      '--disable-renderer-backgrounding',
+      '--disable-backgrounding-occluded-windows',
+    ],
+  });
 }
 
 export async function withBrowser(action: (browser: BrowserLike) => Promise<void>) {
