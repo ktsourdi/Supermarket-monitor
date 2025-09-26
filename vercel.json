@@ -6,6 +6,9 @@
       "path": "/api/run",
       "schedule": "0 6 * * *"
     }
-  ]
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  }
 }
 
