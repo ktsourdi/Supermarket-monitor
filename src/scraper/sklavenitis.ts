@@ -78,6 +78,10 @@ async function extractFromProductPage(page: any): Promise<ScrapeResult | null> {
   return { product: title, price, currency: 'EUR' } satisfies ScrapeResult;
 }
 
+// Global request tracking for throttling
+let lastRequestTime = 0;
+const MIN_REQUEST_INTERVAL = 2000; // Minimum 2 seconds between requests
+
 // Persisted cookie so the server returns full HTML without 403
 const CONSENT_COOKIE_RAW = '{"version":"7C87B57438D00EFA48BF57151CDD2D85DNT0","categories":{"Functional":{"wanted":false},"Marketing":{"wanted":false},"Analytics":{"wanted":false},"Necessary":{"wanted":true}},"dnt":false}';
 const STORESID_COOKIE = '7c755392-2486-48c0-9776-88c432dd2263';
@@ -103,6 +107,12 @@ const USER_AGENTS = [
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36',
 ];
 
+// Helper function to extract Chrome version from user agent
+function extractChromeVersion(userAgent: string): string {
+  const match = userAgent.match(/Chrome\/(\d+)/);
+  return match && match[1] ? match[1] : '120';
+}
+
 // Helper function to get a random user agent
 function getRandomUserAgent(): string {
   const index = Math.floor(Math.random() * USER_AGENTS.length);
@@ -112,6 +122,7 @@ function getRandomUserAgent(): string {
 // Helper function to create realistic headers
 function createHeaders(userAgent?: string): Record<string, string> {
   const ua = userAgent || getRandomUserAgent();
+  const chromeVersion = extractChromeVersion(ua);
   const isMobile = Math.random() < 0.1; // 10% chance of mobile
   const headers: Record<string, string | undefined> = {
     'User-Agent': ua,
@@ -128,12 +139,24 @@ function createHeaders(userAgent?: string): Record<string, string> {
     'Cache-Control': Math.random() < 0.5 ? 'max-age=0' : 'no-cache',
     'Pragma': Math.random() < 0.3 ? 'no-cache' : undefined,
     'Cookie': COOKIE_HEADER,
-    'Sec-Ch-Ua': ua.includes('Chrome') ? '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"' : '"Not_A Brand";v="8", "Chromium";v="120"',
+    'Sec-Ch-Ua': ua.includes('Chrome') ? `"Not_A Brand";v="8", "Chromium";v="${chromeVersion}", "Google Chrome";v="${chromeVersion}"` : `"Not_A Brand";v="8", "Chromium";v="${chromeVersion}"`,
     'Sec-Ch-Ua-Mobile': isMobile ? '?1' : '?0',
     'Sec-Ch-Ua-Platform': ua.includes('Windows') ? '"Windows"' : ua.includes('Mac') ? '"macOS"' : '"Linux"',
+    // Add more realistic browser headers
+    'Sec-Ch-Ua-Platform-Version': ua.includes('Windows') ? '"10.0.0"' : ua.includes('Mac') ? '"14.1.0"' : '"6.5.0"',
+    'Sec-Ch-Ua-Bitness': '"64"',
+    'Sec-Ch-Ua-Arch': '"x86"',
+    'Sec-Ch-Ua-Branding': ua.includes('Chrome') ? '"Google Chrome"' : '"Chromium"',
+    'Sec-Ch-Ua-Form-Factors': isMobile ? '"Mobile"' : '"Desktop"',
+    'Sec-Ch-Ua-Full-Version': ua.includes('Chrome') ? `"${chromeVersion}.0.0.0"` : `"${chromeVersion}.0.0.0"`,
+    'Sec-Ch-Ua-Full-Version-List': ua.includes('Chrome') ? `"Not_A Brand";v="8.0.0.0", "Chromium";v="${chromeVersion}.0.0.0", "Google Chrome";v="${chromeVersion}.0.0.0"` : `"Not_A Brand";v="8.0.0.0", "Chromium";v="${chromeVersion}.0.0.0"`,
+    'Sec-Ch-Ua-Model': isMobile ? '"Pixel 7"' : '""',
     // Add realistic referrer
     'Referer': Math.random() < 0.7 ? 'https://www.google.com/' : undefined,
     'Origin': undefined, // Don't set origin for cross-site requests
+    // Additional headers that real browsers send
+    'X-Requested-With': Math.random() < 0.1 ? 'XMLHttpRequest' : undefined,
+    'X-Forwarded-For': undefined, // Don't set this as it can trigger bot detection
   };
 
   // Remove undefined values and return clean object
@@ -271,13 +294,22 @@ export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResul
   if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_VERSION) {
     try {
       const result = await retryWithBackoff(async (userAgent) => {
+        // Implement request throttling to avoid rate limiting
+        const now = Date.now();
+        const timeSinceLastRequest = now - lastRequestTime;
+        if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
+          await sleep(MIN_REQUEST_INTERVAL - timeSinceLastRequest);
+        }
+        lastRequestTime = Date.now();
+
         // Add a small random delay to avoid detection patterns
         await sleep(Math.random() * 2000 + 1000); // 1-3 seconds
 
         const headers = cleanHeaders(createHeaders(userAgent));
 
-        // Try to establish a session by visiting the homepage first (sometimes helps with anti-bot)
+        // Try to establish a realistic browsing session
         try {
+          // Always start with the homepage to establish session
           await fetch('https://www.sklavenitis.gr/', {
             headers: {
               ...headers,
@@ -288,12 +320,20 @@ export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResul
             },
             signal: AbortSignal.timeout(10000),
           });
-          // Small delay between homepage and product request
-          await sleep(Math.random() * 500 + 200);
+          await sleep(Math.random() * 500 + 200); // 0.2-0.7 seconds
 
-          // Sometimes visit a category page to simulate browsing behavior
-          if (Math.random() < 0.4) { // 40% chance
-            const categoryUrl = 'https://www.sklavenitis.gr/eidi-proinoy-rofimata/kafedes-rofimata-afepsimata/';
+          // Simulate browsing behavior by visiting category pages
+          const categoryUrls = [
+            'https://www.sklavenitis.gr/eidi-proinoy-rofimata/',
+            'https://www.sklavenitis.gr/eidi-proinoy-rofimata/kafedes-rofimata-afepsimata/',
+            'https://www.sklavenitis.gr/eidi-proinoy-rofimata/kafedes-rofimata-afepsimata/kafedes-espresso-se-kapsoules/'
+          ];
+
+          // Visit 1-2 category pages to simulate natural browsing
+          const numCategoryVisits = Math.floor(Math.random() * 2) + 1;
+          for (let i = 0; i < numCategoryVisits; i++) {
+            const categoryIndex = i % categoryUrls.length;
+            const categoryUrl = categoryUrls[categoryIndex]!;
             await fetch(categoryUrl, {
               headers: {
                 ...headers,
@@ -365,6 +405,14 @@ export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResul
   // This code only runs in local development, never in Vercel
   try {
     const result = await retryWithBackoff(async (userAgent) => {
+      // Implement request throttling to avoid rate limiting
+      const now = Date.now();
+      const timeSinceLastRequest = now - lastRequestTime;
+      if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
+        await sleep(MIN_REQUEST_INTERVAL - timeSinceLastRequest);
+      }
+      lastRequestTime = Date.now();
+
       // Add a small random delay to avoid detection patterns
       await sleep(Math.random() * 1000 + 500); // 0.5-1.5 seconds
 
