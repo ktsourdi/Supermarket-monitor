@@ -1,4 +1,4 @@
-import { withBrowser, type ScrapeResult, type BrowserLike } from './playwright.js';
+import { withBrowser, type ScrapeResult, type BrowserLike, getCurrentProxyAuth } from './playwright.js';
 
 function normalizePrice(raw: string): number | null {
   // Greek format often uses comma as decimal separator, dot as thousand separator
@@ -330,6 +330,13 @@ export async function scrapeSklavenitisProduct(url: string): Promise<ScrapeResul
   let result: ScrapeResult | null = null;
   await withBrowser(async (browser: BrowserLike) => {
     const page: any = await browser.newPage();
+    // If proxy requires auth, provide it at page level
+    try {
+      const auth = getCurrentProxyAuth();
+      if (auth && page.authenticate) {
+        await page.authenticate(auth);
+      }
+    } catch {}
     await page.setUserAgent(
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     );
