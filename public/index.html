@@ -5,393 +5,125 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Supermarket Monitor</title>
     <style>
-      * { box-sizing: border-box; margin: 0; padding: 0; }
-      
+      * { box-sizing: border-box; }
       body {
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        min-height: 100vh;
-        padding: 40px 20px;
-        color: #1e293b;
-        line-height: 1.6;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        margin: 0; padding: 0; background: #f8fafc; color: #334155; line-height: 1.6;
       }
+      .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+      h1 { color: #0f172a; margin: 0 0 32px; font-size: 2.5rem; font-weight: 700; }
+      h3 { color: #1e293b; margin: 24px 0 16px; font-size: 1.25rem; font-weight: 600; }
       
-      .container { 
-        max-width: 1400px; 
-        margin: 0 auto; 
-      }
-      
-      .header {
-        text-align: center;
-        margin-bottom: 48px;
-        animation: fadeInDown 0.6s ease-out;
-      }
-      
-      h1 { 
-        color: white;
-        font-size: 3rem;
-        font-weight: 800;
-        margin-bottom: 12px;
-        text-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        letter-spacing: -0.5px;
-      }
-      
-      .subtitle {
-        color: rgba(255,255,255,0.9);
-        font-size: 1.1rem;
-        font-weight: 400;
-      }
-      
-      h3 { 
-        color: #1e293b;
-        margin: 0 0 20px;
-        font-size: 1.4rem;
-        font-weight: 700;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-      }
-      
-      h3::before {
-        content: '';
-        width: 4px;
-        height: 24px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border-radius: 2px;
-      }
-      
-      .card { 
-        background: white;
-        border-radius: 16px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.07), 0 10px 20px rgba(0,0,0,0.05);
-        padding: 32px;
-        margin-bottom: 32px;
-        animation: fadeInUp 0.6s ease-out backwards;
-        transition: transform 0.2s, box-shadow 0.2s;
-      }
-      
-      .card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 12px rgba(0,0,0,0.1), 0 16px 32px rgba(0,0,0,0.08);
-      }
-      
-      .card:nth-child(1) { animation-delay: 0.1s; }
-      .card:nth-child(2) { animation-delay: 0.2s; }
-      .card:nth-child(3) { animation-delay: 0.3s; }
-      .card:nth-child(4) { animation-delay: 0.4s; }
-      
-      .form-row { 
-        display: grid;
-        grid-template-columns: 2fr 1.5fr 1fr auto;
-        gap: 16px;
-        align-items: stretch;
-      }
-      
+      .card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 24px; margin-bottom: 24px; }
+      .form-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
       .form-row input { 
-        padding: 14px 18px;
-        border: 2px solid #e2e8f0;
-        border-radius: 10px;
-        font-size: 15px;
-        transition: all 0.3s;
-        background: #f8fafc;
+        flex: 1; min-width: 200px; padding: 12px 16px; border: 2px solid #e2e8f0; 
+        border-radius: 8px; font-size: 14px; transition: border-color 0.2s;
       }
-      
-      .form-row input:hover {
-        border-color: #cbd5e1;
-        background: white;
-      }
-      
-      .form-row input:focus {
-        outline: none;
-        border-color: #667eea;
-        background: white;
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-      }
+      .form-row input:focus { outline: none; border-color: #3b82f6; }
+      .form-row input[type="number"] { flex: 0 0 140px; }
       
       button { 
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border: none;
-        padding: 14px 28px;
-        border-radius: 10px;
-        font-weight: 600;
-        font-size: 15px;
-        cursor: pointer;
-        transition: all 0.3s;
-        box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
-        white-space: nowrap;
+        background: #3b82f6; color: white; border: none; padding: 12px 24px; 
+        border-radius: 8px; font-weight: 500; cursor: pointer; transition: all 0.2s;
       }
-      
-      button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-      }
-      
-      button:active {
-        transform: translateY(0);
-      }
-      
-      button:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-        transform: none;
-      }
-      
-      button.secondary {
-        background: linear-gradient(135deg, #64748b 0%, #475569 100%);
-        box-shadow: 0 2px 8px rgba(100, 116, 139, 0.3);
-      }
-      
-      button.secondary:hover {
-        box-shadow: 0 4px 12px rgba(100, 116, 139, 0.4);
-      }
-      
-      button.danger {
-        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-        padding: 10px 20px;
-        font-size: 14px;
-        box-shadow: 0 2px 6px rgba(239, 68, 68, 0.3);
-      }
-      
-      button.danger:hover {
-        box-shadow: 0 3px 10px rgba(239, 68, 68, 0.4);
-      }
-      
-      .table-container {
-        overflow-x: auto;
-        border-radius: 12px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-      }
+      button:hover { background: #2563eb; transform: translateY(-1px); }
+      button.secondary { background: #64748b; }
+      button.secondary:hover { background: #475569; }
+      button.danger { background: #ef4444; padding: 8px 16px; font-size: 13px; }
+      button.danger:hover { background: #dc2626; }
       
       table { 
-        width: 100%;
-        border-collapse: collapse;
-        background: white;
+        width: 100%; border-collapse: collapse; background: white; 
+        border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
       }
-      
       th { 
-        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-        padding: 18px 16px;
-        text-align: left;
-        font-weight: 700;
-        color: #475569;
-        text-transform: uppercase;
-        font-size: 12px;
-        letter-spacing: 0.5px;
-        border-bottom: 2px solid #e2e8f0;
+        background: #f1f5f9; padding: 16px 12px; text-align: left; 
+        font-weight: 600; color: #475569; border-bottom: 1px solid #e2e8f0;
       }
-      
-      td { 
-        padding: 18px 16px;
-        border-bottom: 1px solid #f1f5f9;
-        font-size: 15px;
-      }
-      
-      tbody tr {
-        transition: background-color 0.2s;
-      }
-      
-      tbody tr:hover {
-        background: #f8fafc;
-      }
-      
-      tbody tr:last-child td {
-        border-bottom: none;
-      }
+      td { padding: 16px 12px; border-bottom: 1px solid #f1f5f9; }
+      tr:hover { background: #f8fafc; }
       
       .status { 
-        display: inline-block;
-        margin-left: 16px;
-        padding: 8px 16px;
-        border-radius: 20px;
-        font-size: 14px;
-        font-weight: 600;
-        animation: slideIn 0.3s ease-out;
+        margin-left: 12px; padding: 6px 12px; border-radius: 6px; 
+        font-size: 13px; font-weight: 500;
       }
+      .status.success { background: #dcfce7; color: #166534; }
+      .status.error { background: #fee2e2; color: #991b1b; }
+      .status.loading { background: #dbeafe; color: #1d4ed8; }
       
-      .status.success {
-        background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
-        color: #166534;
-      }
-      
-      .status.error {
-        background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
-        color: #991b1b;
-      }
-      
-      .status.loading {
-        background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
-        color: #1e40af;
-      }
-      
-      .link {
-        color: #667eea;
-        text-decoration: none;
-        font-weight: 500;
-        transition: color 0.2s;
-      }
-      
-      .link:hover {
-        color: #764ba2;
-        text-decoration: underline;
-      }
+      .link { color: #3b82f6; text-decoration: none; }
+      .link:hover { text-decoration: underline; }
       
       .empty-state { 
-        text-align: center;
-        padding: 64px 32px;
-        color: #94a3b8;
-        font-size: 16px;
-        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-        border-radius: 12px;
-        border: 2px dashed #e2e8f0;
+        text-align: center; padding: 48px 24px; color: #64748b; 
+        font-style: italic; background: #f8fafc; border-radius: 8px;
       }
       
-      .empty-state::before {
-        content: '📦';
-        display: block;
-        font-size: 48px;
-        margin-bottom: 16px;
-        opacity: 0.5;
-      }
-      
-      .badge {
-        display: inline-block;
-        padding: 6px 12px;
-        border-radius: 12px;
-        font-size: 13px;
-        font-weight: 600;
-      }
-      
-      .badge.active {
-        background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
-        color: #166534;
-      }
-      
-      .badge.inactive {
-        background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
-        color: #991b1b;
-      }
-      
-      .price-tag {
-        font-weight: 700;
-        color: #667eea;
-        font-size: 16px;
-      }
-      
-      @keyframes fadeInDown {
-        from {
-          opacity: 0;
-          transform: translateY(-20px);
-        }
-        to {
-          opacity: 1;
-          transform: translateY(0);
-        }
-      }
-      
-      @keyframes fadeInUp {
-        from {
-          opacity: 0;
-          transform: translateY(20px);
-        }
-        to {
-          opacity: 1;
-          transform: translateY(0);
-        }
-      }
-      
-      @keyframes slideIn {
-        from {
-          opacity: 0;
-          transform: translateX(-10px);
-        }
-        to {
-          opacity: 1;
-          transform: translateX(0);
-        }
-      }
-      
-      @media (max-width: 968px) {
-        body { padding: 24px 16px; }
-        h1 { font-size: 2.2rem; }
-        .card { padding: 24px; margin-bottom: 24px; }
-        .form-row { 
-          grid-template-columns: 1fr;
-        }
+      @media (max-width: 768px) {
+        .container { padding: 16px; }
+        h1 { font-size: 2rem; }
+        .form-row { flex-direction: column; }
+        .form-row input { min-width: unset; }
         table { font-size: 14px; }
-        th, td { padding: 14px 12px; }
-      }
-      
-      @media (max-width: 640px) {
-        h1 { font-size: 1.8rem; }
-        .subtitle { font-size: 1rem; }
-        .card { padding: 20px; }
-        h3 { font-size: 1.2rem; }
-        th, td { padding: 12px 8px; font-size: 13px; }
+        th, td { padding: 12px 8px; }
       }
     </style>
   </head>
   <body>
     <div class="container">
-      <div class="header">
-        <h1>🛒 Supermarket Monitor</h1>
-        <p class="subtitle">Track your favorite products and get notified when prices drop</p>
-      </div>
+      <h1>🛒 Supermarket Monitor</h1>
       
       <div class="card">
-        <h3>✨ Add Product to Watchlist</h3>
+        <h3>Add Product to Watchlist</h3>
         <div class="form-row">
           <input id="url" placeholder="Product URL (e.g., https://www.sklavenitis.gr/...)" />
           <input id="name" placeholder="Product name (optional)" />
           <input id="target" type="number" step="0.01" placeholder="Target price €" />
-          <button id="save">➕ Add Product</button>
+          <button id="save">Add to Watchlist</button>
         </div>
       </div>
 
       <div class="card">
-        <h3>📋 Your Watchlist</h3>
-        <div class="table-container">
-          <table id="watch">
-            <thead>
-              <tr>
-                <th>Product</th>
-                <th>Link</th>
-                <th>Target Price</th>
-                <th>Current Price</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
+        <h3>Current Watchlist</h3>
+        <table id="watch">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>URL</th>
+              <th>Target Price</th>
+              <th>Last Price</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
         <div id="watchlist-empty" class="empty-state" style="display:none;">
-          No products in watchlist yet. Add one above to get started!
+          No products in watchlist. Add one above to get started!
         </div>
       </div>
 
       <div class="card">
-        <h3>📊 Price History</h3>
-        <div class="table-container">
-          <table id="prices">
-            <thead>
-              <tr>
-                <th>Date & Time</th>
-                <th>Product</th>
-                <th>Price</th>
-                <th>Currency</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
+        <h3>Recent Price History</h3>
+        <table id="prices">
+          <thead>
+            <tr>
+              <th>Captured</th>
+              <th>Product</th>
+              <th>Price</th>
+              <th>Currency</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
         <div id="prices-empty" class="empty-state" style="display:none;">
-          No price history available. Run a price check to start tracking!
+          No price data yet. Run the job to capture current prices.
         </div>
       </div>
 
       <div class="card">
-        <h3>⚡ Quick Actions</h3>
+        <h3>Manual Actions</h3>
         <button id="run" class="secondary">🔄 Run Price Check Now</button>
         <span id="status"></span>
       </div>
@@ -418,15 +150,15 @@
             w.forEach(item=>{
               const tr=document.createElement('tr');
               const statusBadge = item.active ? 
-                '<span class="badge active">✓ Active</span>' : 
-                '<span class="badge inactive">✗ Inactive</span>';
+                '<span style="background:#dcfce7;color:#166534;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:500;">Active</span>' : 
+                '<span style="background:#fee2e2;color:#991b1b;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:500;">Inactive</span>';
               tr.innerHTML=`
                 <td><strong>${item.product_name||'Unnamed Product'}</strong></td>
-                <td><a href="${item.product_url}" target="_blank" class="link">🔗 View</a></td>
-                <td>${item.target_price ? '<span class="price-tag">€'+item.target_price.toFixed(2)+'</span>' : '—'}</td>
-                <td>${item.last_notified_price ? '<span class="price-tag">€'+item.last_notified_price.toFixed(2)+'</span>' : '—'}</td>
+                <td><a href="${item.product_url}" target="_blank" class="link">View Product</a></td>
+                <td>${item.target_price ? '€'+item.target_price : '—'}</td>
+                <td>${item.last_notified_price ? '€'+item.last_notified_price : '—'}</td>
                 <td>${statusBadge}</td>
-                <td><button data-id="${item.id}" class="danger">🗑️ Delete</button></td>
+                <td><button data-id="${item.id}" class="danger">Delete</button></td>
               `;
               wtbody.appendChild(tr);
             });
@@ -452,14 +184,8 @@
             pempty.style.display = 'none';
             p.forEach(r=>{
               const tr=document.createElement('tr');
-              const date = new Date(r.captured_at).toLocaleString('en-GB', {
-                day: '2-digit',
-                month: 'short',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-              });
-              tr.innerHTML=`<td>${date}</td><td>${r.product}</td><td><span class="price-tag">€${Number(r.price).toFixed(2)}</span></td><td>${r.currency}</td>`;
+              const date = new Date(r.captured_at).toLocaleString();
+              tr.innerHTML=`<td>${date}</td><td>${r.product}</td><td><strong>€${r.price}</strong></td><td>${r.currency}</td>`;
               ptbody.appendChild(tr);
             });
           }
