@@ -41,7 +41,19 @@ export async function runDailyJob(): Promise<void> {
         ]
           .filter(Boolean)
           .join(', ');
-        await sendTelegramMessage(`Sklavenitis: ${result.product}\nPrice: ${result.price}€\n${item.product_url}\n${reasons}`);
+
+        // Compose optional change line vs last notified price
+        let changeLine = '';
+        if (previousNotified !== undefined && previousNotified > 0 && result.price !== previousNotified) {
+          const diff = result.price - previousNotified;
+          const pct = (diff / previousNotified) * 100;
+          const sign = diff > 0 ? '+' : '';
+          changeLine = `\nChange: ${sign}${diff.toFixed(2)}€ (${sign}${pct.toFixed(1)}%) vs last`;
+        }
+
+        await sendTelegramMessage(
+          `Sklavenitis: ${result.product}\nPrice: ${result.price}€${changeLine}\n${item.product_url}\n${reasons}`
+        );
       }
     } catch (err) {
       // eslint-disable-next-line no-console
